@@ -1,20 +1,20 @@
 # Railway deployment runbook
 
-Status: **the Railway production daemon answers RPC but is not ready to mine; `stratum-pool` exists as an idle, unlinked service placeholder.**
+Status: **both Railway production services are running, but mainnet mining is blocked by the daemon's lack of peers.**
 The daemon reports mainnet mode, block height 0 and zero peers; `getblocktemplate` returns
 `RonPaulCoin is not connected!`. Attempts to connect the pinned mainnet seed addresses did not establish a
-peer. There is no pool TCP proxy or public Stratum endpoint. Pool and daemon behavior has been tested together
-on local regtest only (see "What was verified"). Payouts are disabled and not implemented. Do not expose
-daemon RPC or P2P ports publicly. The live daemon's RPC allow-list currently covers a private-network range,
-not only the future pool address; narrow it to the pool's resolved private address before connecting the
-services.
+peer. The deployed pool has healthy private RPC connectivity but waits for a usable template and does not
+open its Stratum listener. There is no pool TCP proxy or public Stratum endpoint. Pool and daemon behavior
+has been tested together on local regtest only (see "What was verified"). Payouts are disabled and not
+implemented. Do not expose daemon RPC or P2P ports publicly. The daemon's RPC allow-list is currently set
+to the exact private IPv6 address resolved for the pool; re-check it if the pool's private endpoint changes.
 
 ## Services
 
 | Service | Source | Volume | Public networking |
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
-| `stratum-pool` | idle placeholder; connect this repo, branch `main`, root `Dockerfile` after blockers are resolved | `/data` (block journal) | TCP proxy to port 3333 only after the daemon and pool address are ready |
+| `stratum-pool` | this repo, branch `main`, root `Dockerfile`; deployed and waiting for a usable template | `/data` (block journal) | **none**; add a TCP proxy to port 3333 only after the daemon is mining-ready |
 
 Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen
@@ -63,7 +63,11 @@ configure none. Set the restart policy of both services as described in "Restart
    daemon afterwards. Cold start: the pool stays up waiting for the daemon, so its private name resolves;
    the daemon waits up to `RPC_ALLOW_HOST_WAIT_SECONDS` for that name and otherwise exits with status 3 and
    is restarted. Whether Railway resolves a service's private name while its container is crash-looping
-   is not documented and has not been verified.
+   is not documented and has not been verified. **Current production detail:** the existing Railway daemon
+   uses an earlier entrypoint that requires `RPC_ALLOW_IP`, so it is set to the pool's exact current private
+   IPv6 address. If the pool endpoint changes, resolve its current address from the daemon service, update
+   `RPC_ALLOW_IP`, and redeploy the daemon. The repository's current entrypoint supports the `RPC_ALLOW_HOST`
+   watcher described above, but that version is not yet running in the existing daemon service.
 4. **Per-IP limits.** Railway's TCP proxy is not documented as preserving client addresses and the pool
    does not parse PROXY protocol. Assume every miner appears from the proxy's address and set
    `MAX_CONNECTIONS_PER_IP=0` until a test with two real client addresses shows otherwise. The
@@ -82,11 +86,11 @@ configure none. Set the restart policy of both services as described in "Restart
 | `RAILWAY_DOCKERFILE_PATH` | `docker/daemon/Dockerfile` |
 | `RAILWAY_RUN_UID` | `0` (see above) |
 | `RPC_USER`, `RPC_PASSWORD` | random strings, for example `openssl rand -hex 24` for the password |
-| `RPC_ALLOW_HOST` | `stratum-pool.railway.internal` (resolved to exact addresses at startup) |
+| `RPC_ALLOW_HOST` | `stratum-pool.railway.internal` (resolved by the repository's current entrypoint; not active on the existing daemon deployment) |
 | `RPC_ALLOW_HOST_WAIT_SECONDS` | optional, default 60: how long to wait for the name at start before exiting 3 |
 | `RPC_ALLOW_HOST_REFRESH_SECONDS` | optional, default 30, `0` disables re-resolution |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | e.g. `60`: time between SIGTERM and SIGKILL so the daemon can flush its database (see below) |
-| `RPC_ALLOW_IP` | alternative to `RPC_ALLOW_HOST`: an explicit address or pattern; set only one |
+| `RPC_ALLOW_IP` | alternative to `RPC_ALLOW_HOST`: an explicit address or pattern; current production uses the pool's exact private IPv6 address |
 | `DAEMON_NETWORK` | `mainnet` (default), `testnet` or `regtest` |
 | `RPC_PORT` | leave unset on mainnet (default 9026) |
 
@@ -171,16 +175,18 @@ neither service scales out, and redeploying a service with a volume has a short 
 
 ## What was verified
 
-- Railway RPC is reachable with the existing credentials; `getinfo` reports mainnet mode
+- Railway RPC is reachable from the pool with the existing credentials; `getinfo` reports mainnet mode
   (`testnet=false`), block height 0 and zero connections. `getpeerinfo` is empty, and
   `getblocktemplate` fails with `RonPaulCoin is not connected!`. The pinned mainnet seed
   addresses were tried with `addnode ... onetry`; no peer connected. This is a live daemon
   observation, not evidence that the mainnet is unavailable everywhere.
-- The idle pool placeholder has its `/data` journal volume, mainnet/RPC host/port variables and RPC credentials
-  referenced from the daemon variables; the references were verified without displaying values. It has no
-  source, deployment or `POOL_ADDRESS`. No TCP proxy is configured, and no Stratum listener is public.
-- The active daemon RPC allow-list is restricted to a private-network range but is not yet specific to the
-  pool service. The pool currently has no deployed private IP to allow-list.
+- The pool is deployed from this repository's `main` branch with its `/data` journal volume, mainnet/RPC
+  host/port variables, configured coinbase address, and RPC credentials referenced from the daemon variables.
+  The references were verified without displaying values. The pool reports healthy RPC connectivity, then
+  waits on `getblocktemplate` error `-9`; an in-container check confirmed port 3333 is closed. No TCP proxy
+  is configured.
+- The active daemon RPC allow-list is set to the exact private IPv6 address resolved for the pool. A pool
+  redeploy may change that address; verify and update the daemon allow-list if private RPC stops working.
 
 - `docker build` of the pool image (root `Dockerfile`) and of the daemon `deploy` stage.
 - The daemon entrypoint refuses missing variables, unsafe characters and unknown networks.

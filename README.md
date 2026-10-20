@@ -7,9 +7,11 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 **Not ready for mainnet mining.** The Railway production daemon responds to RPC and
 reports mainnet mode, but it is at block 0 with zero peers; `getblocktemplate` fails
-because RonPaulCoin is not connected. Attempts to connect the mainnet seed addresses
-from the pinned daemon source did not establish a peer. The pool service and public
-Stratum endpoint have not been deployed. No live mainnet share or block has been tested.
+because RonPaulCoin is not connected. The `stratum-pool` service is deployed privately
+and its daemon RPC connection is healthy, but it is waiting for a usable block template
+and does not open a Stratum listener. No public TCP proxy or Stratum endpoint is
+configured. Attempts to connect the mainnet seed addresses from the pinned daemon
+source did not establish a peer. No live mainnet share or block has been tested.
 
 Not implemented: payouts (disabled, no code), Redis share accounting, statistics,
 dashboard. The pool fee address is unset, so no fee is taken.
@@ -116,8 +118,9 @@ jobs; pool restart; startup failures without credential leakage.
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Railway runbook (two services, TCP proxy for Stratum,
 private networking for the daemon, volumes, variables, costs and what is unverified). The root
 `Dockerfile` builds the pool; the last stage of `docker/daemon/Dockerfile` (`deploy`) builds the
-daemon with an environment-variable entrypoint. Railway currently has only the daemon service;
-there is no public Stratum endpoint until the mainnet peer and wallet-address blockers are resolved.
+daemon with an environment-variable entrypoint. Both Railway services are deployed; the pool remains
+private and inactive until the daemon has peers and supplies a usable block template. No public
+Stratum hostname or port exists yet.
 
 ## Runtime image
 
