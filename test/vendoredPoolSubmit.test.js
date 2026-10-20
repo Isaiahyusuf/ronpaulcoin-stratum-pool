@@ -27,7 +27,7 @@ describe('block submission against failing daemons', () => {
     }[method]);
 
     const createFixture = async () => {
-        const fixture = { submits: 0, getblocks: 0, submitBehaviour: null, getblockBehaviour: null };
+        const fixture = { submits: 0, getblocks: 0, templates: 0, submitBehaviour: null, getblockBehaviour: null };
         fixture.server = http.createServer((request, response) => {
             let body = '';
             request.on('data', (chunk) => { body += chunk; });
@@ -47,7 +47,10 @@ describe('block submission against failing daemons', () => {
                     fixture.getblocks++;
                     return fixture.getblockBehaviour(request, reply);
                 }
-                if (payload.method === 'getblocktemplate') return reply(200, { result: null, error: { code: -9, message: 'no template in fixture' } });
+                if (payload.method === 'getblocktemplate') {
+                    fixture.templates++;
+                    return reply(200, { result: null, error: { code: -9, message: 'no template in fixture' } });
+                }
                 return reply(200, { result: startupAnswer(payload.method) ?? null, error: null });
             });
         });
@@ -80,7 +83,7 @@ describe('block submission against failing daemons', () => {
         pool.on('log', (severity, message) => logs.push(`${severity}: ${message}`));
         pool.on('share', (isValidShare, isValidBlock, data) => shares.push({ isValidBlock, data }));
         pool.start();
-        await waitFor(() => logs.some((line) => /Error with getblocktemplate on creating first job/.test(line)));
+        await waitFor(() => logs.some((line) => /Waiting for a usable getblocktemplate response/.test(line)));
     };
 
     const waitFor = async (predicate, timeoutMs = 4000) => {
@@ -97,10 +100,20 @@ describe('block submission against failing daemons', () => {
     const unknownBlock = (request, reply) => reply(200, { result: null, error: { code: -5, message: 'Block not found' } });
     const unauthorized = (submits, request, reply) => reply(401, 'Unauthorized');
 
-    beforeEach(() => { fixtures = []; });
+    beforeEach(() => { fixtures = []; pool = null; });
 
     afterEach(async () => {
+        if (pool) await new Promise((resolve) => pool.stop(resolve));
         await Promise.all(fixtures.map((f) => new Promise((resolve) => { f.server.closeAllConnections(); f.server.close(resolve); })));
+    });
+
+    it('keeps startup closed and retries when the daemon has no usable block template', async () => {
+        await startPool(1);
+        await waitFor(() => fixtures[0].templates >= 2, 6000);
+
+        assert.equal(pool.stratumServer, undefined);
+        assert.equal(logged(/Error with getblocktemplate on creating first job/).length, 0);
+        assert.ok(logged(/Waiting for a usable getblocktemplate response: daemon instance 0: -9 no template in fixture/).length >= 1);
     });
 
     it('does not retry an authentication error and logs the block for manual submission', async () => {

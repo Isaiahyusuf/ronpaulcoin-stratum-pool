@@ -181,7 +181,7 @@ neither service scales out, and redeploying a service with a volume has a short 
 - A regtest daemon started by the entrypoint with its credentials in a 0600 file answers RPC; a second
   node peered to it; the pool image started against it, wrote its journal to a mounted volume, and a real
   cpuminer 2.5.1 mined blocks that both nodes accepted.
-- Unit tests: `npm test` (180 passed). Regtest integration: `npm run test:integration` (52 passed).
+- Unit tests: `npm test` (181 passed). Regtest integration: `npm run test:integration` (52 passed).
 - The scrypt implementation matched all five pinned-daemon header/hash vectors on Node.js 24
   running on ARM64.
 

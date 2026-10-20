@@ -19,4 +19,8 @@ Apart from `require` lines, a few small robustness and security fixes differ fro
 | `lib/jobManager.js` | `processShare` rejects non-hexadecimal `extraNonce2`, `ntime` and `nonce` and lower-cases them before the duplicate check, so case variants of an accepted share are duplicates and malformed fields are not hashed as truncated headers. |
 | `lib/daemon.js` | Every RPC request now completes exactly once within a wall-clock deadline (10 seconds, overridable per daemon with `timeoutMs`). HTTP 401/403 (`unauthorized`), other non-2xx statuses (`http error`) and empty or malformed bodies (`parse error`) are reported as errors instead of leaving the request pending; socket errors, resets, truncated bodies and timeouts are `request error`, and a refused connection is `offline`. Only `offline` and `request error` are treated as retryable. `isOnline` checked `results.error` (always undefined), so it always reported online; it now checks each result. The `password` property of each daemon instance is non-enumerable so it cannot be serialised into logs. Every request uses its own connection (`agent: false`, `Connection: close`): a request written to a reused keep-alive socket whose peer had vanished stayed in the kernel send queue after the pool's deadline and was delivered once the network returned, so a block the pool had reported as not submitted was accepted later. |
 
+At startup, the pool waits until every configured daemon returns an object block template. Template errors
+(including RPC `-9`, “not connected”) and empty responses are logged and retried every five seconds; no
+Stratum listener opens during this wait.
+
 `diff -r vendor/stratum-pool/lib <upstream>/lib` shows every change.

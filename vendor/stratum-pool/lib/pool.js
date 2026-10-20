@@ -19,6 +19,8 @@ var pool = module.exports = function pool(options, authorizeFn){
 
     var _this = this;
     var blockPollingIntervalId;
+    var blockTemplateRetryTimeoutId;
+    var stopping = false;
 
 
     var emitLog        = function(text) { _this.emit('log', 'debug'  , text); };
@@ -57,9 +59,14 @@ var pool = module.exports = function pool(options, authorizeFn){
     };
 
     this.stop = function(callback) {
+        stopping = true;
         if (blockPollingIntervalId) {
             clearInterval(blockPollingIntervalId);
             blockPollingIntervalId = null;
+        }
+        if (blockTemplateRetryTimeoutId) {
+            clearTimeout(blockTemplateRetryTimeoutId);
+            blockTemplateRetryTimeoutId = null;
         }
         if (_this.blockJournal && typeof _this.blockJournal.stop === 'function') {
             _this.blockJournal.stop();
@@ -133,31 +140,43 @@ var pool = module.exports = function pool(options, authorizeFn){
 
 
     function OnBlockchainSynced(syncedCallback){
-
-        var checkSynced = function(displayNotSynced){
+        var lastTemplateFailure = null;
+        var lastTemplateFailureAt = 0;
+        var checkSynced = function(){
+            if (stopping) return;
             _this.daemon.cmd('getblocktemplate', [{"capabilities": [ "coinbasetxn", "workid", "coinbase/append" ], "rules": [ "segwit" ]}], function(results){
-                var synced = results.every(function(r){
-                    return !r.error || r.error.code !== -10;
+                if (stopping) return;
+                var failures = results.filter(function(r){
+                    return r.error || !r.response || typeof r.response !== 'object';
                 });
-                if (synced){
+                if (failures.length === 0){
+                    blockTemplateRetryTimeoutId = null;
                     syncedCallback();
                 }
                 else{
-                    if (displayNotSynced) displayNotSynced();
-                    setTimeout(checkSynced, 5000);
+                    var failure = failures.map(function(r){
+                        var error = r.error;
+                        return 'daemon instance ' + r.instance.index + ': ' +
+                            (error ? (error.code || error.type || 'RPC error') + ' ' + error.message : 'empty block template');
+                    }).join('; ');
+                    var now = Date.now();
+                    if ((!process.env.forkId || process.env.forkId === '0') &&
+                        (failure !== lastTemplateFailure || now - lastTemplateFailureAt >= 60000)) {
+                        emitErrorLog('Waiting for a usable getblocktemplate response: ' + failure);
+                        lastTemplateFailure = failure;
+                        lastTemplateFailureAt = now;
+                    }
+                    blockTemplateRetryTimeoutId = setTimeout(function(){
+                        blockTemplateRetryTimeoutId = null;
+                        checkSynced();
+                    }, 5000);
 
-                    //Only let the first fork show synced status or the log wil look flooded with it
                     if (!process.env.forkId || process.env.forkId === '0')
                         generateProgress();
                 }
-
             });
         };
-        checkSynced(function(){
-            //Only let the first fork show synced status or the log wil look flooded with it
-            if (!process.env.forkId || process.env.forkId === '0')
-                emitErrorLog('Daemon is still syncing with network (download blockchain) - server will be started once synced');
-        });
+        checkSynced();
 
 
         var generateProgress = function(){
