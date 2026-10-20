@@ -124,6 +124,14 @@ describe('stratum server protocol and connection safety', () => {
             assert.equal(seenName, 'good.rig1');
         });
 
+        it('closes active miner sockets on shutdown', async () => {
+            const miner = await connect();
+            await new Promise((resolve, reject) => {
+                server.close((error) => error ? reject(error) : resolve());
+            });
+            assert.equal(await miner.waitForClose(), true);
+        });
+
         it('rejects a failed authorization with result false', async () => {
             const miner = await connect();
             const reply = await handshake(miner, 'bad-login');

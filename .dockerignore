@@ -8,3 +8,4 @@ docs
 .env.*
 *.log
 .regtest-control.*
+!docker/daemon/deploy-entrypoint.sh

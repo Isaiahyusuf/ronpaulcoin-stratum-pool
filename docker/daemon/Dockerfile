@@ -44,44 +44,14 @@ RUN useradd --uid 10001 --home-dir /data --shell /usr/sbin/nologin ronpaulcoin \
     && mkdir /data && chown ronpaulcoin /data
 USER ronpaulcoin
 WORKDIR /data
-VOLUME /data
 ENTRYPOINT ["ronpaulcoind"]
 CMD ["-datadir=/data", "-printtoconsole"]
 
 # Deployment image for hosts that configure services through environment variables (Railway). It adds only
-# an entrypoint that writes a private config file from RPC_USER, RPC_PASSWORD and RPC_ALLOW_IP;
+# an entrypoint that writes a private config file from RPC_USER, RPC_PASSWORD and RPC_ALLOW_HOST (or RPC_ALLOW_IP);
 # extra container arguments are passed to ronpaulcoind and take precedence over the file.
 # It is the last stage, so it is what a plain `docker build` produces; the harness builds `--target runtime`.
 FROM runtime AS deploy
-COPY --chmod=755 <<'ENTRYPOINT' /usr/local/bin/deploy-entrypoint.sh
-#!/bin/sh
-set -eu
-: "${RPC_USER:?RPC_USER is required}"
-: "${RPC_PASSWORD:?RPC_PASSWORD is required}"
-: "${RPC_ALLOW_IP:?RPC_ALLOW_IP is required: a wildcard pattern matching only the pool service address}"
-for value in "$RPC_USER" "$RPC_PASSWORD" "$RPC_ALLOW_IP"; do
-    case "$value" in
-        *[!A-Za-z0-9._:*@%+=/-]*) echo "RPC_USER, RPC_PASSWORD and RPC_ALLOW_IP may only contain letters, digits and . _ : * @ % + = / -" >&2; exit 2 ;;
-    esac
-done
-case "${DAEMON_NETWORK:-mainnet}" in
-    mainnet) network="" ;;
-    testnet) network="-testnet" ;;
-    regtest) network="-regtest" ;;
-    *) echo "DAEMON_NETWORK must be mainnet, testnet or regtest" >&2; exit 2 ;;
-esac
-umask 077
-conf=$(mktemp)
-{
-    echo "server=1"
-    echo "listen=0"
-    echo "rpcuser=$RPC_USER"
-    echo "rpcpassword=$RPC_PASSWORD"
-    echo "rpcallowip=$RPC_ALLOW_IP"
-    if [ -n "${RPC_PORT:-}" ]; then echo "rpcport=$RPC_PORT"; fi
-} > "$conf"
-# shellcheck disable=SC2086
-exec ronpaulcoind -conf="$conf" -datadir=/data -printtoconsole $network "$@"
-ENTRYPOINT
+COPY --chmod=755 docker/daemon/deploy-entrypoint.sh /usr/local/bin/deploy-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/deploy-entrypoint.sh"]
 CMD []

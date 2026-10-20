@@ -429,6 +429,8 @@ var StratumServer = exports.Server = function StratumServer(options, authorizeFn
     var bannedIPs = {};
     var connectionsByIp = {};
     var totalConnections = 0;
+    var servers = [];
+    var closed = false;
 
     function normalizeAddress(address){
         return typeof address === 'string' ? address.replace(/^::ffff:/i, '') : 'unknown';
@@ -545,9 +547,11 @@ var StratumServer = exports.Server = function StratumServer(options, authorizeFn
 
         var serversStarted = 0;
         Object.keys(options.ports).forEach(function(port){
-            net.createServer({allowHalfOpen: false}, function(socket) {
+            var server = net.createServer({allowHalfOpen: false}, function(socket) {
                 _this.handleNewClient(socket);
-            }).listen(parseInt(port), function() {
+            });
+            servers.push(server);
+            server.listen(parseInt(port), function() {
                 serversStarted++;
                 if (serversStarted == Object.keys(options.ports).length)
                     _this.emit('started');
@@ -570,6 +574,41 @@ var StratumServer = exports.Server = function StratumServer(options, authorizeFn
 
     this.getStratumClients = function () {
         return stratumClients;
+    };
+
+    this.close = function (callback) {
+        if (closed) {
+            if (callback) callback();
+            return;
+        }
+        closed = true;
+        clearTimeout(rebroadcastTimeout);
+
+        var activeServers = servers.filter(function(server) { return server.listening; });
+        var pending = activeServers.length;
+        var closeError = null;
+        var completed = false;
+
+        function onClose(error) {
+            if (error && !closeError) closeError = error;
+            pending--;
+            if (pending === 0 && !completed) {
+                completed = true;
+                if (callback) callback(closeError);
+            }
+        }
+
+        activeServers.forEach(function(server) {
+            server.close(onClose);
+        });
+        Object.keys(stratumClients).forEach(function(clientId) {
+            stratumClients[clientId].socket.destroy();
+        });
+
+        if (pending === 0 && !completed) {
+            completed = true;
+            if (callback) callback();
+        }
     };
 
     this.removeStratumClientBySubId = function (subscriptionId) {

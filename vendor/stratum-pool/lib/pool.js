@@ -56,6 +56,22 @@ var pool = module.exports = function pool(options, authorizeFn){
         });
     };
 
+    this.stop = function(callback) {
+        if (blockPollingIntervalId) {
+            clearInterval(blockPollingIntervalId);
+            blockPollingIntervalId = null;
+        }
+        if (_this.blockJournal && typeof _this.blockJournal.stop === 'function') {
+            _this.blockJournal.stop();
+        }
+        if (_this.stratumServer && typeof _this.stratumServer.close === 'function') {
+            _this.stratumServer.close(callback);
+        }
+        else if (callback) {
+            callback();
+        }
+    };
+
 
 
     function GetFirstJob(finishedCallback){

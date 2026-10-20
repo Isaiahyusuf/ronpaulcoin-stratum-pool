@@ -5,13 +5,14 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 ## Status
 
-**Mainnet compatibility has not been established.** Everything below has been verified
-only on a private two-node regtest network built from the pinned 0.9.1 daemon source.
-No connection to the live RonPaulCoin network has been made, no mainnet chain has been
-synced, and no real miner software has been tested.
+**Not ready for mainnet mining.** The Railway production daemon responds to RPC and
+reports mainnet mode, but it is at block 0 with zero peers; `getblocktemplate` fails
+because RonPaulCoin is not connected. Attempts to connect the mainnet seed addresses
+from the pinned daemon source did not establish a peer. The pool service and public
+Stratum endpoint have not been deployed. No live mainnet share or block has been tested.
 
 Not implemented: payouts (disabled, no code), Redis share accounting, statistics,
-dashboard, deployment configuration. The pool fee address is unset, so no fee is taken.
+dashboard. The pool fee address is unset, so no fee is taken.
 
 ## Layout
 
@@ -48,6 +49,7 @@ npm install
 | `DAEMON_RPC_PASSWORD` | yes | | Daemon RPC password; never logged |
 | `STRATUM_PORT` | no | 3333 | Public Stratum TCP port |
 | `STRATUM_DIFFICULTY` | no | 1 | Fixed share difficulty |
+| `DAEMON_RETRY_SECONDS` | no | 5 | While a daemon is down, unauthorised or still starting, the pool retries RPC at this interval and opens no Stratum port and issues no jobs until every daemon answers. Repeated identical failures are logged at most once a minute. Invalid or missing configuration still exits immediately. Wrong RPC credentials are retried too (so a credential rotation can converge) and logged without the password |
 | `BLOCK_REFRESH_MS` | no | 1000 | Template polling interval |
 | `JOB_REBROADCAST_SECONDS` | no | 55 | Re-send the current job (picks up new transactions) |
 | `BLOCK_SUBMIT_ATTEMPTS` | no | 20 | Submission attempts for a solved block while no daemon is reachable |
@@ -114,7 +116,8 @@ jobs; pool restart; startup failures without credential leakage.
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Railway runbook (two services, TCP proxy for Stratum,
 private networking for the daemon, volumes, variables, costs and what is unverified). The root
 `Dockerfile` builds the pool; the last stage of `docker/daemon/Dockerfile` (`deploy`) builds the
-daemon with an environment-variable entrypoint. Nothing has been deployed.
+daemon with an environment-variable entrypoint. Railway currently has only the daemon service;
+there is no public Stratum endpoint until the mainnet peer and wallet-address blockers are resolved.
 
 ## Runtime image
 
@@ -135,8 +138,9 @@ address (the 0.9.1 daemon matches wildcards such as `172.18.*.*`, not CIDR), and
 - A block found while every daemon is unreachable is retried for `BLOCK_SUBMIT_ATTEMPTS`
   attempts; if they run out, the block hex is logged for manual `submitblock`. The block
   is orphaned if the chain moves on in the meantime.
-- Startup requires every configured daemon to answer `getpeerinfo`; if one is unreachable or
-  rejects the credentials the pool logs the failure and exits instead of starting degraded.
+- Startup requires every configured daemon to answer `getpeerinfo`. Until they all do, the pool keeps
+  retrying every `DAEMON_RETRY_SECONDS`, logs the failure (never the password), and listens on no port and
+  issues no jobs, so it never starts degraded. Invalid configuration exits immediately.
   Authentication and malformed-response errors on block submission are not retried; the block
   hex is logged for manual `submitblock`.
 - Share accounting is not implemented: shares are validated and logged, not stored.

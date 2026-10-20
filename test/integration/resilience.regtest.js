@@ -171,7 +171,10 @@ describe('pool behaviour when daemons fail and recover', () => {
     });
 
     it('closes miner connections on pool shutdown and a restarted pool serves the current tip', async () => {
+        const stoppingPool = pool;
         await pool.stop();
+        assert.deepEqual(await stoppingPool.waitForExit(), { code: 0, signal: null });
+        assert.ok(stoppingPool.lines.some((line) => line.includes('SIGTERM received, stopping')));
         await worker.client.waitForClose();
         await assert.rejects(connectWorker(regtest.stratumPort, `${regtest.minerAddress}.resilience`), { code: 'ECONNREFUSED' });
 
@@ -183,28 +186,49 @@ describe('pool behaviour when daemons fail and recover', () => {
     });
 
     describe('startup failures', () => {
-        it('exits with an error when the daemon is unreachable and never prints the RPC password', async () => {
+        const canConnect = (port) => new Promise((resolve) => {
+            const socket = require('node:net').connect(port, '127.0.0.1');
+            socket.once('connect', () => { socket.destroy(); resolve(true); });
+            socket.once('error', () => resolve(false));
+        });
+
+        it('waits without exiting or listening while the daemon is unreachable, then starts serving once it returns', async () => {
             await requestFault('disconnect', 'rpc-a');
+            let waiting;
             try {
-                const failing = startPoolProcess({ ...poolEnv, DAEMON_HOSTS: 'rpc-a:18443', STRATUM_PORT: '3334' });
-                const exit = await failing.waitForExit(30000);
-                assert.equal(exit.code, 1);
-                assert.ok(failing.lines.some((line) => /Failed to connect daemon\(s\)/.test(line)));
-                assert.ok(!failing.lines.join('\n').includes(poolEnv.DAEMON_RPC_PASSWORD));
+                waiting = startPoolProcess({ ...poolEnv, DAEMON_HOSTS: 'rpc-a:18443', STRATUM_PORT: '3334', DAEMON_RETRY_SECONDS: '1' });
+                await waiting.waitForLog(/Waiting for daemon RPC, retrying every 1s: rpc-a:18443/, 30000);
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+                assert.ok(waiting.isRunning(), 'the pool must keep running while the daemon is down');
+                assert.equal(await canConnect(3334), false, 'no Stratum listener before RPC is healthy');
+                assert.ok(!waiting.lines.some((line) => /Stratum Pool Server Started/.test(line)));
             } finally {
                 await requestFault('connect', 'rpc-a');
                 await waitForDaemonsReady();
             }
+            try {
+                await waiting.waitForLog(/Daemon RPC is healthy/, 30000);
+                await waiting.waitForLog(/Stratum Pool Server Started/, 60000);
+                assert.equal(await canConnect(3334), true);
+                assert.ok(!waiting.lines.join('\n').includes(poolEnv.DAEMON_RPC_PASSWORD));
+            } finally {
+                await waiting.stop();
+            }
         });
 
-        it('exits with an error when the RPC credentials are wrong without printing them', async () => {
+        it('keeps retrying when the RPC credentials are wrong, never prints them, and opens no port', async () => {
             const wrongPassword = 'definitely-not-the-password';
-            const failing = startPoolProcess({ ...poolEnv, DAEMON_RPC_PASSWORD: wrongPassword, STRATUM_PORT: '3334' });
-            const exit = await failing.waitForExit(30000);
-            assert.equal(exit.code, 1);
-            assert.ok(failing.lines.some((line) => /Unauthorized RPC access/.test(line)));
-            const output = failing.lines.join('\n');
-            assert.ok(!output.includes(wrongPassword) && !output.includes(poolEnv.DAEMON_RPC_PASSWORD));
+            const failing = startPoolProcess({ ...poolEnv, DAEMON_RPC_PASSWORD: wrongPassword, STRATUM_PORT: '3335', DAEMON_RETRY_SECONDS: '1' });
+            try {
+                await failing.waitForLog(/refused the request \(HTTP 401\)/, 30000);
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                assert.ok(failing.isRunning());
+                assert.equal(await canConnect(3335), false);
+                const output = failing.lines.join('\n');
+                assert.ok(!output.includes(wrongPassword) && !output.includes(poolEnv.DAEMON_RPC_PASSWORD));
+            } finally {
+                await failing.stop();
+            }
         });
 
         it('never logged the RPC password while running', () => {
