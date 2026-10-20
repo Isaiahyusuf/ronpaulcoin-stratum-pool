@@ -1,0 +1,13 @@
+{
+    "name": "RonPaulCoin",
+    "symbol": "RPC",
+    "algorithm": "scrypt",
+    "hasGetInfo": true,
+    "peerMagic": "fbc0b6db",
+    "peerMagicTestnet": "fcc1b7dc",
+    "addressVersions": {
+        "mainnet": { "pubkeyHash": 60, "scriptHash": 3 },
+        "testnet": { "pubkeyHash": 122, "scriptHash": 196 },
+        "regtest": { "pubkeyHash": 122, "scriptHash": 196 }
+    }
+}

@@ -1,0 +1,10 @@
+.git
+node_modules
+test
+tools
+docker
+docs
+.env
+.env.*
+*.log
+.regtest-control.*

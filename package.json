@@ -1,0 +1,17 @@
+{
+    "name": "ronpaulcoin-stratum-pool",
+    "version": "0.1.0",
+    "private": true,
+    "description": "RonPaulCoin Stratum mining pool based on NOMP and node-stratum-pool",
+    "license": "GPL-2.0",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "test": "node --test test/*.test.js",
+        "test:integration": "tools/regtest.sh test"
+    },
+    "dependencies": {
+        "async": "3.2.6"
+    }
+}
