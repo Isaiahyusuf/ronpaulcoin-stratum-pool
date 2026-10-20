@@ -1,18 +1,20 @@
 # Railway deployment runbook
 
-Status: **the Railway production daemon answers RPC but is not ready to mine; the pool service is not deployed.**
+Status: **the Railway production daemon answers RPC but is not ready to mine; `stratum-pool` exists as an idle, unlinked service placeholder.**
 The daemon reports mainnet mode, block height 0 and zero peers; `getblocktemplate` returns
 `RonPaulCoin is not connected!`. Attempts to connect the pinned mainnet seed addresses did not establish a
 peer. There is no pool TCP proxy or public Stratum endpoint. Pool and daemon behavior has been tested together
 on local regtest only (see "What was verified"). Payouts are disabled and not implemented. Do not expose
-daemon RPC or P2P ports publicly.
+daemon RPC or P2P ports publicly. The live daemon's RPC allow-list currently covers a private-network range,
+not only the future pool address; narrow it to the pool's resolved private address before connecting the
+services.
 
 ## Services
 
 | Service | Source | Volume | Public networking |
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
-| `stratum-pool` | not created; this repo, root `Dockerfile` | `/data` (block journal) | TCP proxy to port 3333 after the daemon and pool address are ready |
+| `stratum-pool` | idle placeholder; connect this repo, branch `main`, root `Dockerfile` after blockers are resolved | `/data` (block journal) | TCP proxy to port 3333 only after the daemon and pool address are ready |
 
 Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen
@@ -174,7 +176,11 @@ neither service scales out, and redeploying a service with a volume has a short 
   `getblocktemplate` fails with `RonPaulCoin is not connected!`. The pinned mainnet seed
   addresses were tried with `addnode ... onetry`; no peer connected. This is a live daemon
   observation, not evidence that the mainnet is unavailable everywhere.
-- Railway has no pool service and no TCP proxy on the daemon. No Stratum listener is public.
+- The idle pool placeholder has its `/data` journal volume, mainnet/RPC host/port variables and RPC credentials
+  referenced from the daemon variables; the references were verified without displaying values. It has no
+  source, deployment or `POOL_ADDRESS`. No TCP proxy is configured, and no Stratum listener is public.
+- The active daemon RPC allow-list is restricted to a private-network range but is not yet specific to the
+  pool service. The pool currently has no deployed private IP to allow-list.
 
 - `docker build` of the pool image (root `Dockerfile`) and of the daemon `deploy` stage.
 - The daemon entrypoint refuses missing variables, unsafe characters and unknown networks.
