@@ -5,11 +5,13 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 ## Status
 
-The Railway production Stratum service has a public TCP proxy and has passed external
-subscribe, configured-address authorization, and job-delivery checks. This confirms the
-Stratum endpoint is reachable; it does **not** independently verify current canonical
-mainnet activity or prove that a share was accepted. At last daemon verification on
-2026-10-21, it had two peers advertising height 2,221,495. Its tip hash is
+The Railway production Stratum service and daemon containers report online, but the
+Stratum service currently has **no public TCP proxy or public domain**. The former proxy
+was removed after an external check confirmed it was still serving jobs from an
+independently unverified chain; a follow-up connection was reset. Do not recreate public
+ingress until canonical mainnet synchronization is verified. Daemon logs checked on
+2026-10-21 reported two peers advertising height 2,221,495, but both repeatedly timed out.
+The daemon's recorded tip hash is
 `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated
 2026-08-26. A pool startup attempt reported that the daemon was downloading blocks;
 MiningPoolStats reports zero miners and hashrate and a pool-reported height
@@ -25,7 +27,8 @@ pool activity from an authenticated private API. Mainnet daemon RPC, current cha
 network hashrate, and canonical-chain verification remain unavailable.
 Telemetry code is pushed to `main`, but Railway currently rejects production deployments with
 “Deploys have been paused temporarily.” Until Railway resumes deployments, the live services still
-run their prior build and the dashboard continues to show activity as untracked.
+run their prior build; persistent mining telemetry and fail-closed template handling are not
+yet deployed. The dashboard should report the disabled Stratum endpoint as offline.
 Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
 scrypt mainnet.
 
@@ -70,7 +73,7 @@ Network hashrate, daemon RPC, chain tip, peers, and template status remain unava
 If you control a custom domain, create it for the dashboard with
 `railway domain pool.ronpaulcoin.org --service pool-dashboard --port 8080`, then publish
 the DNS records Railway returns and wait for the domain and TLS certificate to become
-active. The Stratum TCP endpoint remains on its separate Railway proxy and port.
+active. Stratum public ingress is currently disabled pending independent mainnet verification.
 
 ## Requirements
 
@@ -100,6 +103,7 @@ npm install
 | `STRATUM_DIFFICULTY` | no | 1 | Fixed share difficulty |
 | `DAEMON_RETRY_SECONDS` | no | 5 | While a daemon is down, unauthorised or still starting, the pool retries RPC at this interval and opens no Stratum port and issues no jobs until every daemon answers. Repeated identical failures are logged at most once a minute. Invalid or missing configuration still exits immediately. Wrong RPC credentials are retried too (so a credential rotation can converge) and logged without the password |
 | `BLOCK_REFRESH_MS` | no | 1000 | Template polling interval |
+| `POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE` | no | `true` | Stop the pool with a nonzero exit when every configured daemon fails to provide a current template; do not set to `false` in production |
 | `JOB_REBROADCAST_SECONDS` | no | 55 | Re-send the current job (picks up new transactions) |
 | `BLOCK_SUBMIT_ATTEMPTS` | no | 20 | Submission attempts for a solved block while no daemon is reachable |
 | `BLOCK_SUBMIT_RETRY_MS` | no | 3000 | Delay between those attempts |

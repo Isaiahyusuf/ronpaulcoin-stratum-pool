@@ -21,6 +21,8 @@ var pool = module.exports = function pool(options, authorizeFn){
     var blockPollingIntervalId;
     var blockTemplateRetryTimeoutId;
     var stopping = false;
+    var stratumStarted = false;
+    var templateUnavailableEmitted = false;
 
 
     var emitLog        = function(text) { _this.emit('log', 'debug'  , text); };
@@ -581,6 +583,7 @@ var pool = module.exports = function pool(options, authorizeFn){
         _this.stratumServer = new stratum.Server(options, authorizeFn);
 
         _this.stratumServer.on('started', function(){
+            stratumStarted = true;
             options.initStats.stratumPorts = Object.keys(options.ports);
             _this.stratumServer.broadcastMiningJobs(_this.jobManager.currentJob.getJobParams());
             finishedCallback();
@@ -719,12 +722,19 @@ var pool = module.exports = function pool(options, authorizeFn){
 
 
     function GetBlockTemplate(callback){
+        var daemonFailures = 0;
         _this.daemon.cmd('getblocktemplate',
             [{"capabilities": [ "coinbasetxn", "workid", "coinbase/append" ], "rules": [ "segwit" ]}],
             function(result){
                 if (result.error){
                     emitErrorLog('getblocktemplate call failed for daemon instance ' +
                         result.instance.index + ' with error ' + JSON.stringify(result.error));
+                    daemonFailures++;
+                    if (stratumStarted && options.failClosedOnTemplateFailure &&
+                        daemonFailures === options.daemons.length && !templateUnavailableEmitted){
+                        templateUnavailableEmitted = true;
+                        _this.emit('templateUnavailable', result.error);
+                    }
                     callback(result.error);
                 } else {
                     var processedNewBlock = _this.jobManager.processTemplate(result.response);

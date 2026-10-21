@@ -21,8 +21,14 @@ test('loads a valid configuration with defaults', () => {
     assert.equal(config.stratum.port, 3333);
     assert.equal(config.stratum.difficulty, 1);
     assert.equal(config.blockRefreshMs, 1000);
+    assert.equal(config.failClosedOnTemplateFailure, true);
     assert.deepEqual(config.daemons.map((d) => [d.host, d.port]), [['rpc-a', 9026], ['rpc-b', 9026]]);
     assert.equal(config.daemons[0].password, 'secret');
+});
+
+test('fails closed by default when all daemons stop providing block templates', () => {
+    assert.equal(loadPoolConfig({ ...validEnv(), POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE: 'false' }).failClosedOnTemplateFailure, false);
+    assert.throws(() => loadPoolConfig({ ...validEnv(), POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE: 'yes' }), /POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE/);
 });
 
 test('does not mutate the shared coin definition', () => {

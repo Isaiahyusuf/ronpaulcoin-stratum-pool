@@ -1,15 +1,20 @@
 # Railway deployment runbook
 
-Status: the daemon, Stratum, and separate `pool-dashboard` web services are online; a public Stratum
-proxy is configured. Stratum subscribe, configured-address
-authorization, and job delivery were externally smoke-tested, but canonical mainnet activity is not
-independently verified and no accepted mainnet share, mined block, or payout has been verified.
-The telemetry implementation is pushed to `main`; Railway production deploy requests currently fail
-with “Deploys have been paused temporarily,” so the live pool and dashboard remain on their prior
-successful deployment until Railway resumes deployments.
-The daemon last reported height 2,221,495, tip
+Status: the daemon, Stratum, and separate `pool-dashboard` services report online, but the Stratum
+service has **no public TCP proxy or public domain**. On 2026-10-21, an external client received a
+subscription, authorized with the configured address, and received a job; the proxy was then deleted
+because the daemon's mainnet tip is not independently verified. A subsequent connection to the old
+address was reset. Do not recreate public ingress until canonical mainnet synchronization and valid
+current work are independently verified. No accepted mainnet share, mined block, or payout has been
+verified.
+
+The telemetry and fail-closed template changes are not deployed. Railway previously rejected source
+deploy requests with “Deploys have been paused temporarily”; confirm that Railway has resumed before
+attempting a deploy. The daemon logs checked on 2026-10-21 show two peers repeatedly timing out and
+advertising height 2,221,495. Its recorded tip hash is
 `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated 2026-08-26; the peers
-advertised the same height. Do not expose daemon RPC or P2P ports publicly. The daemon's RPC
+advertised the same height. These observations are not independent evidence of the canonical chain.
+Do not expose daemon RPC or P2P ports publicly. The daemon's RPC
 allow-list is restricted to the pool's private hostname-resolved addresses; the dashboard must not
 be added to that allow-list.
 
@@ -18,14 +23,14 @@ be added to that allow-list.
 | Service | Source | Volume | Public networking |
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
-| `stratum-pool` | this repo, branch `main`, root `Dockerfile` | `/data` (block journal) | TCP proxy `roundhouse.proxy.rlwy.net:53914` -> `3333` |
+| `stratum-pool` | this repo, branch `main`, root `Dockerfile` | `/data` (block journal) | **none** (TCP proxy and service domain removed pending chain verification) |
 | `pool-dashboard` | this repo, root directory `web`, `Dockerfile` | none | [pool-dashboard-production-02b2.up.railway.app](https://pool-dashboard-production-02b2.up.railway.app/) |
 
-Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
+When it is safe to operate publicly, Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen
 by Railway, not by you; miners use `stratum+tcp://<name>.proxy.rlwy.net:<port>`. A custom domain can be
 CNAMEd to the proxy host (DNS only, no Cloudflare proxying) but the port stays Railway's. Ordinary HTTP
-domains cannot carry Stratum. The daemon is reached only over private networking
+domains cannot carry Stratum. Do not create a proxy before the canonical-chain gate is cleared. The daemon is reached only over private networking
 (`ronpaulcoind.railway.internal:9026`). Never generate a public domain or TCP proxy for it.
 
 The dashboard exposes `/healthz` for its HTTP health check and does not connect to daemon RPC. Its
@@ -131,6 +136,7 @@ the volume and not onto the command line.
 | `DAEMON_HOSTS` | `ronpaulcoind.railway.internal:9026` |
 | `DAEMON_RPC_USER`, `DAEMON_RPC_PASSWORD` | Railway reference variables to the daemon's `RPC_USER` and `RPC_PASSWORD` |
 | `STRATUM_PORT` | `3333` (the TCP proxy target) |
+| `POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE` | `true` (default; shuts down Stratum if every configured daemon fails to provide a current block template) |
 | `STRATUM_DIFFICULTY` | chosen for mainnet |
 | `DAEMON_RETRY_SECONDS` | optional, default 5 |
 | `MAX_CONNECTIONS_PER_IP` | `0` until real client addresses are confirmed |
@@ -155,7 +161,7 @@ trial plans. It is set per service in the dashboard (Service settings, Deploy). 
 | Service | Policy | Why |
 |---|---|---|
 | `ronpaulcoind` | `Always` | it deliberately exits (status 3 when the pool name is unresolved, status 1 after a confirmed pool-address change) and must come back every time, not only 10 times |
-| `stratum-pool` | `Always` | it exits on invalid configuration or if the daemon fails right after the readiness check; `Always` keeps retrying after a corrected variable |
+| `stratum-pool` | `Always` | it exits on invalid configuration, startup failures, or when every daemon stops providing block templates; `Always` retries after recovery |
 
 No CLI flag for the restart policy exists in the Railway CLI 5.49.1 installed here (`railway --help`,
 `service`, `variable` and `up` list none; `railway service restart` only restarts a deployment). The only
@@ -197,36 +203,50 @@ block outcomes.
 
 ## Resources and cost (estimates, not measurements)
 
-Pool and daemon resource use has not been measured on mainnet. Assumed: daemon about 1 GB RAM and 0.5
-vCPU average, higher CPU during first sync; pool about 0.25 GB RAM and 0.1 vCPU. Railway rates at the
+Pool and daemon resource use has not been measured under sustained mainnet operation. The latest
+available daemon metrics snapshot was about 958 MB of 8 GB memory and 1.8 GB of 5 GB volume used; the
+chain is not verified complete, so this does not establish final storage requirements. Assumed: daemon
+about 1 GB RAM and 0.5 vCPU average, higher CPU during first sync; pool about 0.25 GB RAM and 0.1 vCPU.
+Railway rates at the
 time of writing ([pricing](https://docs.railway.com/pricing/plans)): RAM $10/GB/month, CPU $20/vCPU/month,
 volume $0.15/GB/month, egress $0.05/GB, Hobby plan $5/month with that amount credited to usage.
 Rough monthly total: about $25-30 plus egress, dominated by the daemon. The chain size is unknown
-because no mainnet data was downloaded; check the existing node's data directory size before choosing a
-volume (Hobby volumes start at 5 GB and can be enlarged). Replicas cannot be used with volumes, so
+because the daemon has not been independently verified as fully synchronized; preserve the existing
+volume and check its current usage before resizing (Hobby volumes start at 5 GB and can be enlarged).
+Replicas cannot be used with volumes, so
 neither service scales out, and redeploying a service with a volume has a short downtime.
 
 ## What was verified
 
-- Railway RPC is reachable from the pool with the existing credentials; `getinfo` reports mainnet mode
-  (`testnet=false`), block height 0 and zero connections. `getpeerinfo` is empty, and
-  `getblocktemplate` fails with `RonPaulCoin is not connected!`. The pinned mainnet seed
-  addresses were tried with `addnode ... onetry`; no peer connected. This is a live daemon
-  observation, not evidence that the mainnet is unavailable everywhere.
-- The pool is deployed from this repository's `main` branch with its `/data` journal volume, mainnet/RPC
-  host/port variables, configured coinbase address, and RPC credentials referenced from the daemon variables.
-  The references were verified without displaying values. The pool reports healthy RPC connectivity, then
-  waits on `getblocktemplate` error `-9`; an in-container check confirmed port 3333 is closed. No TCP proxy
-  is configured.
-- The active daemon RPC allow-list is set to the exact private IPv6 address resolved for the pool. A pool
-  redeploy may change that address; verify and update the daemon allow-list if private RPC stops working.
+- Both the pinned daemon source and original RonPaulCoin source define the mainnet genesis hash as
+  `12e05e8d4a8258aed79e113ee429c5194ee1c8999f50df176ecea97380d474ab`, with mainnet P2P magic
+  `fbc0b6db`. Matching source parameters establish network identity, not the canonical current tip.
+- Daemon logs checked on 2026-10-21 show stored height `2,221,495`, tip
+  `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, timestamp
+  `2026-08-26 21:32:04`, and sync progress `0.840622`. Two observed peer handshakes advertised that same
+  height, followed by repeated `socket recv error 110` timeouts. Earlier pool logs report daemon RPC
+  error `-9`, “RonPaulCoin is not connected!” Matching advertised heights are not independent proof.
+- A live RPC probe could not be completed during this run: Railway SSH timed out connecting to
+  `ssh.railway.com:22`, and `railway run` could not retrieve service variables (“Problem processing
+  request”). Current `getinfo`, `getpeerinfo`, best tip, chainwork, and template availability therefore
+  remain unverified. The public CryptoID `ric` endpoint currently identifies itself as Riecoin, not
+  RonPaulCoin, so its reported height is not valid corroboration. MiningPoolStats is a pool listing with
+  an old reported block, not an independently operated node.
+- Before ingress was removed, an external client received a Stratum subscription, authorization using
+  the configured address, and a job. No share was submitted. Railway now lists no TCP proxy or service
+  domain for `stratum-pool`, the previous address resets new connections, and the public dashboard API
+  reports the pool offline.
+- The current production pool deployment is still the prior successful image. A local Railway source
+  deployment of the fail-closed fix was rejected with “Deploys have been paused temporarily.” The tested
+  code is not running in production. The daemon RPC allow-list remains private; no daemon RPC or P2P
+  port was exposed.
 
 - `docker build` of the pool image (root `Dockerfile`) and of the daemon `deploy` stage.
 - The daemon entrypoint refuses missing variables, unsafe characters and unknown networks.
 - A regtest daemon started by the entrypoint with its credentials in a 0600 file answers RPC; a second
   node peered to it; the pool image started against it, wrote its journal to a mounted volume, and a real
   cpuminer 2.5.1 mined blocks that both nodes accepted.
-- Unit tests: `npm test` (181 passed). Regtest integration: `npm run test:integration` (52 passed).
+- Unit tests: `npm test` (199 passed). Regtest integration: `npm run test:integration` (54 passed).
 - The scrypt implementation matched all five pinned-daemon header/hash vectors on Node.js 24
   running on ARM64.
 

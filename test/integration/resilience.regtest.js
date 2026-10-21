@@ -7,7 +7,13 @@ const { requestFault } = require('../helpers/control');
 
 const regtest = createRegtestEnvironment({ stratumPort: 3333, difficulty: 0.000025 });
 const { rpcA, rpcB } = regtest;
-const poolEnv = { ...regtest.poolEnv, JOB_REBROADCAST_SECONDS: '3', BLOCK_SUBMIT_ATTEMPTS: '5', BLOCK_SUBMIT_RETRY_MS: '1000' };
+const poolEnv = {
+    ...regtest.poolEnv,
+    POOL_FAIL_CLOSED_ON_TEMPLATE_FAILURE: 'false',
+    JOB_REBROADCAST_SECONDS: '3',
+    BLOCK_SUBMIT_ATTEMPTS: '5',
+    BLOCK_SUBMIT_RETRY_MS: '1000'
+};
 const NODES = ['rpc-a', 'rpc-b'];
 
 describe('pool behaviour when daemons fail and recover', () => {
@@ -228,6 +234,29 @@ describe('pool behaviour when daemons fail and recover', () => {
                 assert.ok(!output.includes(wrongPassword) && !output.includes(poolEnv.DAEMON_RPC_PASSWORD));
             } finally {
                 await failing.stop();
+            }
+        });
+
+        it('closes Stratum when every daemon stops providing block templates', async () => {
+            const failClosed = startPoolProcess({
+                ...regtest.poolEnv,
+                STRATUM_PORT: '3336',
+                POOL_STATS_PORT: '13336'
+            });
+            let miner;
+            try {
+                await failClosed.waitForLog(/Stratum Pool Server Started/, 30000);
+                miner = await connectWorker(3336, `${regtest.minerAddress}.failclosed`);
+                for (const node of NODES) await requestFault('disconnect', node);
+
+                await failClosed.waitForLog(/No configured daemon can provide a current block template/, 30000);
+                assert.deepEqual(await failClosed.waitForExit(), { code: 1, signal: null });
+                await miner.client.waitForClose();
+            } finally {
+                if (miner) miner.client.close();
+                if (failClosed.isRunning()) await failClosed.stop();
+                for (const node of NODES) await requestFault('connect', node);
+                await waitForDaemonsReady();
             }
         });
 

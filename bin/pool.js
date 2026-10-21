@@ -30,13 +30,13 @@ async function closeTelemetry() {
     }
 }
 
-function stop(signal) {
+function stop(reason, exitCode = 0) {
     if (stopping) return;
     stopping = true;
-    console.log(`${new Date().toISOString()} [info] ${signal} received, stopping`);
+    console.log(`${new Date().toISOString()} [info] ${reason}, stopping`);
 
     if (!pool) {
-        process.exit(0);
+        process.exit(exitCode);
         return;
     }
 
@@ -52,7 +52,7 @@ function stop(signal) {
             process.exit(1);
             return;
         }
-        closeTelemetry().then(() => process.exit(0)).catch((cleanupError) => {
+        closeTelemetry().then(() => process.exit(exitCode)).catch((cleanupError) => {
             console.error(`${new Date().toISOString()} [error] Statistics shutdown failed: ${sanitizeLogMessage(cleanupError.message)}`);
             process.exit(1);
         });
@@ -60,7 +60,7 @@ function stop(signal) {
 }
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.on(signal, () => stop(signal));
+    process.on(signal, () => stop(`${signal} received`));
 }
 
 const stamp = (severity, message) => console.log(`${new Date().toISOString()} [${severity}] ${sanitizeLogMessage(message)}`);
@@ -100,6 +100,12 @@ waitForDaemons(config.daemons, { intervalMs: config.daemonRetrySeconds * 1000, l
 
     pool.on('log', (severity, message) => {
         console.log(`${new Date().toISOString()} [${severity}] ${sanitizeLogMessage(message)}`);
+    });
+
+    pool.on('templateUnavailable', (error) => {
+        const detail = error && error.message ? error.message : 'daemon RPC failed';
+        stamp('error', `No configured daemon can provide a current block template; shutting down Stratum: ${detail}`);
+        stop('template unavailable', 1);
     });
 
     pool.on('share', (isValidShare, isValidBlock, data) => {
