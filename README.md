@@ -7,7 +7,7 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 The Railway production pool is exposed over Stratum TCP at
 `altaria.proxy.rlwy.net:43142` (application port 3333). At last verification, the daemon
-had one connected peer, was at height 2,221,495, and returned a template for height
+had two connected peers, was at height 2,221,495, and returned a template for height
 2,221,496. The reported tip is dated 2026-08-26; recent mainnet block production has not
 been independently confirmed. A public subscribe/authorize/job-delivery check passed,
 but no real miner share has been submitted and no block has been mined.
