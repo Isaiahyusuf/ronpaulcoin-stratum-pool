@@ -1,7 +1,7 @@
 # Railway deployment runbook
 
-Status: the daemon and Stratum services are online; a public Stratum proxy is configured, and the
-separate `pool-dashboard` web service is being deployed. Stratum subscribe, configured-address
+Status: the daemon, Stratum, and separate `pool-dashboard` web services are online; a public Stratum
+proxy is configured. Stratum subscribe, configured-address
 authorization, and job delivery were externally smoke-tested, but canonical mainnet activity is not
 independently verified and no accepted mainnet share, mined block, or payout has been verified.
 The daemon last reported height 2,221,495, tip
@@ -29,7 +29,11 @@ The dashboard exposes `/healthz` for its HTTP health check and does not connect 
 `/api/status` endpoint requires a valid Stratum `mining.subscribe` response from the public endpoint.
 Miner counts, share totals, hashrate,
 block history, and live chain/RPC fields remain unavailable because they are not persisted or exposed
-to the dashboard. Set the restart policy of the daemon and pool as described in "Restart policy" below.
+to the dashboard. To add a custom dashboard domain later, run
+`railway domain pool.ronpaulcoin.org --service pool-dashboard --port 8080`, publish the DNS records
+Railway returns, and wait for Railway to report the domain and TLS certificate active. This does not
+change the separate Stratum TCP proxy or its port. Set the restart policy of the daemon and pool as
+described in "Restart policy" below.
 
 ## Settings that need your decision before deploying
 

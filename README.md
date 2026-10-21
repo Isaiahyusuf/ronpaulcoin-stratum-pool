@@ -38,7 +38,7 @@ not guaranteed. Share accounting, statistics, and miner payouts are not implemen
 |---|---|
 | `bin/pool.js` | Entry point; reads configuration from the environment |
 | `lib/` | Config validation, login/address checks, scrypt hasher, pool wrapper |
-| `web/` | Independent HTTP dashboard and its read-only Stratum TCP health check |
+| `web/` | Independent HTTP dashboard and its Stratum subscription health check |
 | `coins/ronpaulcoin.json` | Coin parameters (address versions, algorithm, `hasGetInfo`) |
 | `vendor/stratum-pool/` | Upstream Stratum engine; patches listed in `VENDORED.md` |
 | `docker/daemon/Dockerfile` | Pinned daemon build (`builder`) and minimal `runtime` image |
@@ -57,6 +57,11 @@ The dashboard measures only whether the configured public Stratum endpoint retur
 peers, and template status are shown as unavailable—not as zero—because they are not
 exposed to this service or persisted by the pool. No share accounting or payouts are
 added by the dashboard.
+
+If you control a custom domain, create it for the dashboard with
+`railway domain pool.ronpaulcoin.org --service pool-dashboard --port 8080`, then publish
+the DNS records Railway returns and wait for the domain and TLS certificate to become
+active. The Stratum TCP endpoint remains on its separate Railway proxy and port.
 
 ## Requirements
 
