@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const net = require('node:net');
 const { createDashboardServer, createRateLimiter } = require('../web/server');
 
 const env = {
@@ -28,6 +29,7 @@ test('status API reports configured endpoint and clearly unavailable metrics wit
         const body = await response.json();
         assert.equal(response.status, 200);
         assert.equal(body.pool.status, 'reachable');
+        assert.equal(body.pool.check, 'mining.subscribe');
         assert.deepEqual(body.pool.endpoint, { host: env.STRATUM_PUBLIC_HOST, port: 53914, protocol: 'Stratum TCP' });
         assert.equal(body.connection.loginFormat, `${env.POOL_ADDRESS}.<worker>`);
         assert.equal(body.mining.poolHashrate, null);
@@ -51,8 +53,31 @@ test('status API distinguishes a failed health probe from a measured offline end
     await withServer({ env, probe: async () => { throw new Error('probe implementation failure'); } }, async (base) => {
         const body = await (await fetch(`${base}/api/status`)).json();
         assert.equal(body.pool.status, 'unavailable');
-        assert.equal(body.pool.error, 'The TCP health check could not complete.');
+        assert.equal(body.pool.error, 'The Stratum subscribe health check could not complete.');
     });
+});
+
+test('Stratum probe requires a valid subscribe response rather than TCP reachability alone', async () => {
+    const probeServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk) => {
+            buffer += chunk.toString();
+            if (!buffer.includes('\n')) return;
+            socket.write(`${JSON.stringify({ id: 1, result: [[], 'abcd', 4], error: null })}\n`);
+        });
+    });
+    await new Promise((resolve) => probeServer.listen(0, '127.0.0.1', resolve));
+    try {
+        await withServer({
+            env: { ...env, STRATUM_PUBLIC_HOST: '127.0.0.1', STRATUM_PUBLIC_PORT: String(probeServer.address().port) }
+        }, async (base) => {
+            const body = await (await fetch(`${base}/api/status`)).json();
+            assert.equal(body.pool.status, 'reachable');
+            assert.equal(body.pool.check, 'mining.subscribe');
+        });
+    } finally {
+        await new Promise((resolve) => probeServer.close(resolve));
+    }
 });
 
 test('health check reports web process health without claiming pool or daemon health', async () => {

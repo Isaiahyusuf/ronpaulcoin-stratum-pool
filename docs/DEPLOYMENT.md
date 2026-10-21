@@ -26,7 +26,8 @@ domains cannot carry Stratum. The daemon is reached only over private networking
 (`ronpaulcoind.railway.internal:9026`). Never generate a public domain or TCP proxy for it.
 
 The dashboard exposes `/healthz` for its HTTP health check and does not connect to daemon RPC. Its
-`/api/status` endpoint tests only public Stratum TCP reachability. Miner counts, share totals, hashrate,
+`/api/status` endpoint requires a valid Stratum `mining.subscribe` response from the public endpoint.
+Miner counts, share totals, hashrate,
 block history, and live chain/RPC fields remain unavailable because they are not persisted or exposed
 to the dashboard. Set the restart policy of the daemon and pool as described in "Restart policy" below.
 

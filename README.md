@@ -20,7 +20,7 @@ and no block or payout has been verified.
 
 The production web dashboard is available at
 [pool-dashboard-production-02b2.up.railway.app](https://pool-dashboard-production-02b2.up.railway.app/).
-It is a separate Railway service and checks Stratum TCP reachability while displaying
+It is a separate Railway service and checks the Stratum `mining.subscribe` response while displaying
 its configured endpoint. Daemon RPC, current chain details, templates, and mining
 statistics are explicitly unavailable until a trustworthy data source exists.
 Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
@@ -52,8 +52,8 @@ using Railway's `PORT`, and serves `/` plus `/api/status` and `/healthz`. Config
 `STRATUM_PUBLIC_HOST`, `STRATUM_PUBLIC_PORT`, and the public `POOL_ADDRESS` on that
 service. It requires no daemon RPC credentials and must not be granted daemon RPC access.
 
-The dashboard measures only whether a TCP connection to the configured public Stratum
-endpoint succeeds. Pool/network hashrate, workers, shares, blocks, daemon RPC, chain tip,
+The dashboard measures only whether the configured public Stratum endpoint returns a valid
+`mining.subscribe` response. Pool/network hashrate, workers, shares, blocks, daemon RPC, chain tip,
 peers, and template status are shown as unavailable—not as zero—because they are not
 exposed to this service or persisted by the pool. No share accounting or payouts are
 added by the dashboard.

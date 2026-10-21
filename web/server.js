@@ -23,10 +23,11 @@ function readConfig(env) {
     return { host, port, address, webPort };
 }
 
-function probeTcp(host, port, timeoutMs = 2500) {
+function probeStratum(host, port, timeoutMs = 2500) {
     return new Promise((resolve) => {
         const socket = net.createConnection({ host, port });
         let settled = false;
+        let buffer = '';
         const finish = (connected) => {
             if (settled) return;
             settled = true;
@@ -34,7 +35,24 @@ function probeTcp(host, port, timeoutMs = 2500) {
             resolve(connected);
         };
         socket.setTimeout(timeoutMs, () => finish(false));
-        socket.once('connect', () => finish(true));
+        socket.once('connect', () => {
+            socket.write(`${JSON.stringify({ id: 1, method: 'mining.subscribe', params: [] })}\n`);
+        });
+        socket.on('data', (chunk) => {
+            buffer += chunk.toString('utf8');
+            if (buffer.length > 16_384) {
+                finish(false);
+                return;
+            }
+            const newline = buffer.indexOf('\n');
+            if (newline === -1) return;
+            try {
+                const reply = JSON.parse(buffer.slice(0, newline));
+                finish(reply.id === 1 && reply.error == null && Object.hasOwn(reply, 'result'));
+            } catch {
+                finish(false);
+            }
+        });
         socket.once('error', () => finish(false));
     });
 }
@@ -67,7 +85,7 @@ function createRateLimiter({ maxRequests = 60, windowMs = 60_000, now = Date.now
     };
 }
 
-function createDashboardServer({ env = process.env, probe = probeTcp, now = () => new Date() } = {}) {
+function createDashboardServer({ env = process.env, probe = probeStratum, now = () => new Date() } = {}) {
     const config = readConfig(env);
     const allowApiRequest = createRateLimiter();
     const publicDir = path.join(__dirname, 'public');
@@ -113,8 +131,9 @@ function createDashboardServer({ env = process.env, probe = probeTcp, now = () =
                 generatedAt: checkedAt,
                 pool: {
                     status: probeFailed ? 'unavailable' : reachable ? 'reachable' : 'offline',
-                    error: probeFailed ? 'The TCP health check could not complete.' : null,
+                    error: probeFailed ? 'The Stratum subscribe health check could not complete.' : null,
                     checkedAt,
+                    check: 'mining.subscribe',
                     endpoint: { host: config.host, port: config.port, protocol: 'Stratum TCP' }
                 },
                 mining: {
@@ -185,4 +204,4 @@ if (require.main === module) {
     server.listen(port, '0.0.0.0', () => console.log(`Dashboard listening on port ${port}`));
 }
 
-module.exports = { createDashboardServer, createRateLimiter, probeTcp, readConfig };
+module.exports = { createDashboardServer, createRateLimiter, probeStratum, readConfig };

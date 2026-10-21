@@ -29,7 +29,7 @@ function render(data) {
     setText('reward-address', values.address);
     setText('command-text', values.command);
     setText('last-check', formatTime(data.pool.checkedAt));
-    setText('pool-status', data.pool.status === 'reachable' ? 'TCP REACHABLE' : data.pool.status === 'offline' ? 'OFFLINE' : 'CHECK FAILED');
+    setText('pool-status', data.pool.status === 'reachable' ? 'STRATUM READY' : data.pool.status === 'offline' ? 'OFFLINE' : 'CHECK FAILED');
     setText('rpc-status', data.network.daemonRpc === 'unavailable' ? 'Private / unavailable' : data.network.daemonRpc);
 
     const dot = document.getElementById('status-dot');
