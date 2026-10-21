@@ -1,10 +1,8 @@
-const crypto = require('node:crypto');
 const { encodeAddress } = require('../../lib/address');
 const { createRpcClient } = require('./rpc');
 const { createTestKey } = require('./transactions');
 
 const REGTEST_P2PKH = 122;
-const hash160Of = (label) => crypto.createHash('sha256').update(label).digest().subarray(0, 20);
 
 function requireEnv(name) {
     const value = process.env[name];
@@ -23,7 +21,7 @@ function createRegtestEnvironment({ stratumPort, difficulty }) {
     const poolKey = createTestKey('regtest pool key');
     const poolHash160 = poolKey.hash160;
     const poolAddress = encodeAddress(REGTEST_P2PKH, poolHash160);
-    const minerAddress = encodeAddress(REGTEST_P2PKH, hash160Of('regtest miner address'));
+    const minerAddress = poolAddress;
 
     const poolEnv = {
         POOL_NETWORK: 'regtest',

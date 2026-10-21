@@ -90,12 +90,14 @@ test('worker logins use address.worker and validate the address checksum', () =>
 
 test('authorizer answers through the stratum callback and reports rejections', () => {
     const rejected = [];
-    const authorize = createAuthorizer(coin.addressVersions.mainnet, (ip, login) => rejected.push([ip, login]));
+    const authorize = createAuthorizer(coin.addressVersions.mainnet, mainAddress, (ip, login) => rejected.push([ip, login]));
     const results = [];
     authorize('1.2.3.4', 3333, `${mainAddress}.w`, 'x', (r) => results.push(r));
+    const differentValidAddress = encodeAddress(60, Buffer.alloc(20, 8));
+    authorize('1.2.3.4', 3333, `${differentValidAddress}.w`, 'x', (r) => results.push(r));
     authorize('1.2.3.4', 3333, 'nonsense', 'x', (r) => results.push(r));
-    assert.deepEqual(results.map((r) => r.authorized), [true, false]);
-    assert.deepEqual(rejected, [['1.2.3.4', 'nonsense']]);
+    assert.deepEqual(results.map((r) => r.authorized), [true, false, false]);
+    assert.deepEqual(rejected, [['1.2.3.4', `${differentValidAddress}.w`], ['1.2.3.4', 'nonsense']]);
 });
 
 test('connection and abuse limits default to safe values and can be tuned or disabled', () => {

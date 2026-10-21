@@ -5,16 +5,18 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 ## Status
 
-**Not ready for mainnet mining.** The Railway production daemon responds to RPC and
-reports mainnet mode, but it is at block 0 with zero peers; `getblocktemplate` fails
-because RonPaulCoin is not connected. The `stratum-pool` service is deployed privately
-and its daemon RPC connection is healthy, but it is waiting for a usable block template
-and does not open a Stratum listener. No public TCP proxy or Stratum endpoint is
-configured. Attempts to connect the mainnet seed addresses from the pinned daemon
-source did not establish a peer. No live mainnet share or block has been tested.
+The Railway production pool is exposed over Stratum TCP at
+`altaria.proxy.rlwy.net:43142` (application port 3333). At last verification, the daemon
+had one connected peer, was at height 2,221,495, and returned a template for height
+2,221,496. The reported tip is dated 2026-08-26; recent mainnet block production has not
+been independently confirmed. A public subscribe/authorize/job-delivery check passed,
+but no real miner share has been submitted and no block has been mined.
 
-Not implemented: payouts (disabled, no code), Redis share accounting, statistics,
-dashboard. The pool fee address is unset, so no fee is taken.
+**Solo-pool reward model:** the entire block reward goes to `POOL_ADDRESS`. There are no
+automatic miner payouts or share accounting. Authorization accepts only that configured
+address (optionally followed by `.worker`); using a different miner login address is
+rejected. Only mine with a wallet you control and understand that finding a block is
+not guaranteed. Redis share accounting, statistics and a dashboard are not implemented.
 
 ## Layout
 
@@ -72,8 +74,9 @@ npm install
 | `MESSAGE_RATE_WINDOW_SECONDS` | no | 10 | Length of that window; the default allows 100 messages per second on average |
 | `MAX_OUTPUT_BUFFER_BYTES` | no | 1048576 | Unsent output queued for one connection (a client that stops reading) before it is closed; 0 disables, otherwise at least 4096 |
 
-Miners authenticate with `<payout address>.<worker>`. Keep credentials in the
-environment or an untracked file; `.env.regtest` is gitignored.
+Solo miners authenticate with `<POOL_ADDRESS>.<worker>`; this does not create a separate
+payout for the worker. Keep credentials in the environment or an untracked file;
+`.env.regtest` is gitignored.
 
 ## Local regtest
 
