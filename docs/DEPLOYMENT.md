@@ -16,7 +16,7 @@ be added to that allow-list.
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
 | `stratum-pool` | this repo, branch `main`, root `Dockerfile` | `/data` (block journal) | TCP proxy `roundhouse.proxy.rlwy.net:53914` -> `3333` |
-| `pool-dashboard` | this repo, root directory `web`, `Dockerfile` | none | Railway HTTP domain; see Railway service |
+| `pool-dashboard` | this repo, root directory `web`, `Dockerfile` | none | [pool-dashboard-production-02b2.up.railway.app](https://pool-dashboard-production-02b2.up.railway.app/) |
 
 Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen

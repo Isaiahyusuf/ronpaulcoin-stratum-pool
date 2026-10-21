@@ -18,9 +18,11 @@ does not independently establish the current canonical tip. The two peers' match
 responses are not independent corroboration. No real mainnet share has been submitted
 and no block or payout has been verified.
 
-The production web dashboard is a separate service. It checks Stratum TCP reachability
-and displays its configured endpoint. Daemon RPC, current chain details, templates, and
-mining statistics are explicitly unavailable until a trustworthy data source exists.
+The production web dashboard is available at
+[pool-dashboard-production-02b2.up.railway.app](https://pool-dashboard-production-02b2.up.railway.app/).
+It is a separate Railway service and checks Stratum TCP reachability while displaying
+its configured endpoint. Daemon RPC, current chain details, templates, and mining
+statistics are explicitly unavailable until a trustworthy data source exists.
 Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
 scrypt mainnet.
 
