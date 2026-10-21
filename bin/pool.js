@@ -3,6 +3,8 @@ const { loadPoolConfig } = require('../lib/poolConfig');
 const { createPoolServer } = require('../lib/poolServer');
 const { sanitizeLogMessage } = require('../lib/logFormat');
 const { waitForDaemons } = require('../lib/daemonWait');
+const { MiningStats } = require('../lib/miningStats');
+const { createStatsApi } = require('../lib/statsApi');
 
 let config;
 try {
@@ -13,7 +15,20 @@ try {
 }
 
 let pool;
+let stats;
+let statsApi;
 let stopping = false;
+
+async function closeTelemetry() {
+    if (statsApi) {
+        await statsApi.close();
+        statsApi = null;
+    }
+    if (stats) {
+        stats.close();
+        stats = null;
+    }
+}
 
 function stop(signal) {
     if (stopping) return;
@@ -37,7 +52,10 @@ function stop(signal) {
             process.exit(1);
             return;
         }
-        process.exit(0);
+        closeTelemetry().then(() => process.exit(0)).catch((cleanupError) => {
+            console.error(`${new Date().toISOString()} [error] Statistics shutdown failed: ${sanitizeLogMessage(cleanupError.message)}`);
+            process.exit(1);
+        });
     });
 }
 
@@ -49,9 +67,27 @@ const stamp = (severity, message) => console.log(`${new Date().toISOString()} [$
 
 // A daemon that is down, still starting or restarting is normal on a shared host: wait for it instead of
 // exiting, and open nothing (no Stratum port, no jobs) until RPC answers. Configuration errors above exit.
-waitForDaemons(config.daemons, { intervalMs: config.daemonRetrySeconds * 1000, log: stamp }).then(() => {
+waitForDaemons(config.daemons, { intervalMs: config.daemonRetrySeconds * 1000, log: stamp }).then(async () => {
     if (stopping) return;
-    pool = createPoolServer(config);
+    if (config.statistics) {
+        try {
+            stats = new MiningStats(config.statistics.path);
+            statsApi = createStatsApi({
+                stats,
+                port: config.statistics.port,
+                token: config.statistics.token,
+                log: (message) => stamp('error', message)
+            });
+            await statsApi.listen();
+            stamp('info', `Private mining statistics API listening on port ${config.statistics.port}`);
+        } catch (error) {
+            stamp('error', `Mining statistics are unavailable: ${error.message}`);
+            if (stats) stats.close();
+            stats = null;
+            statsApi = null;
+        }
+    }
+    pool = createPoolServer(config, { statsTracker: stats });
 
     let started = false;
     process.on('exit', (code) => {
@@ -77,4 +113,12 @@ waitForDaemons(config.daemons, { intervalMs: config.daemonRetrySeconds * 1000, l
     });
 
     pool.start();
+}).catch((error) => {
+    stamp('error', `Pool startup failed: ${error.message}`);
+    closeTelemetry().then(() => {
+        process.exitCode = 1;
+    }).catch((cleanupError) => {
+        stamp('error', `Statistics cleanup failed: ${cleanupError.message}`);
+        process.exitCode = 1;
+    });
 });

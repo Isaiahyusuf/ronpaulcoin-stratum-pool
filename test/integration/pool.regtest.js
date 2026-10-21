@@ -10,6 +10,24 @@ const POOL_DIFFICULTY = 0.000025;
 const regtest = createRegtestEnvironment({ stratumPort: STRATUM_PORT, difficulty: POOL_DIFFICULTY });
 const { rpcA, rpcB } = regtest;
 
+async function getPoolStats() {
+    const response = await fetch(`http://127.0.0.1:${regtest.poolEnv.POOL_STATS_PORT}/internal/stats`, {
+        headers: { Authorization: `Bearer ${regtest.poolEnv.POOL_STATS_TOKEN}` }
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+}
+
+async function waitForStats(check, description, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const stats = await getPoolStats();
+        if (check(stats)) return stats;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`timed out waiting for ${description}`);
+}
+
 async function connectMiner(login, { authorize = true, port = STRATUM_PORT } = {}) {
     const client = await StratumClient.connect(port);
     const subscribed = await client.request('mining.subscribe', ['regtest-test-miner/1.0']);
@@ -81,6 +99,8 @@ describe('RonPaulCoin pool against two local regtest daemons', () => {
         assert.equal(session.authorized.error, null);
         assert.match(session.extraNonce1, /^[0-9a-f]{8}$/);
         assert.equal(session.extraNonce2Size, 4);
+        const stats = await waitForStats((value) => value.connectedMiners === 1, 'authenticated worker telemetry');
+        assert.equal(stats.connectedWorkers, 1);
     });
 
     it('sends the pool difficulty and a mining.notify for the daemon template', async () => {
@@ -146,6 +166,8 @@ describe('RonPaulCoin pool against two local regtest daemons', () => {
             assert.deepEqual([response.result, response.error], [true, null]);
             await new Promise((resolve) => setTimeout(resolve, 1000));
             assert.equal((await rpcA('getinfo')).blocks, baseHeight, 'a share below the network target must not create a block');
+            const stats = await waitForStats((value) => value.acceptedShares >= 1, 'accepted share telemetry');
+            assert.equal(stats.recentActivity[0].status, 'accepted');
         });
 
         it('rejects a duplicate submission', async () => {
@@ -160,6 +182,15 @@ describe('RonPaulCoin pool against two local regtest daemons', () => {
             assert.equal(response.result, null);
             assert.equal(response.error[0], 23);
             assert.match(response.error[1], /low difficulty/);
+            const stats = await waitForStats((value) => value.rejectedShares >= 2, 'rejected share telemetry');
+            assert.equal(stats.staleShares, 0);
+        });
+
+        it('classifies an unknown job submission as stale in persisted telemetry', async () => {
+            const response = await submit(session, { ...firstJob, jobId: 'deadbeef' }, extraNonce2, firstJob.ntime, '00000002');
+            assert.equal(response.error[0], 21);
+            const stats = await waitForStats((value) => value.staleShares >= 1, 'stale share telemetry');
+            assert.ok(stats.recentActivity.some((event) => event.status === 'stale'));
         });
 
         it('rejects non-hexadecimal fields instead of hashing a truncated header', async () => {
@@ -287,6 +318,9 @@ describe('RonPaulCoin pool against two local regtest daemons', () => {
             await regtest.waitUntil(async () => (await rpcB('getblockcount')) === baseHeight + 1, 'node B to receive the block');
             assert.equal(await rpcA('getbestblockhash'), expectedHash);
             assert.equal(await rpcB('getbestblockhash'), expectedHash);
+            const stats = await waitForStats((value) => value.blocksFound === 1, 'daemon-confirmed block telemetry');
+            assert.equal(stats.lastBlock.hash, expectedHash);
+            assert.equal(stats.lastBlock.height, baseHeight + 1);
         });
 
         it('stored the coinbase and header exactly as the independent miner built them', async () => {

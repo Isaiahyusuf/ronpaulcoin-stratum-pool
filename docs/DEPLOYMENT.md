@@ -26,10 +26,21 @@ domains cannot carry Stratum. The daemon is reached only over private networking
 (`ronpaulcoind.railway.internal:9026`). Never generate a public domain or TCP proxy for it.
 
 The dashboard exposes `/healthz` for its HTTP health check and does not connect to daemon RPC. Its
-`/api/status` endpoint requires a valid Stratum `mining.subscribe` response from the public endpoint.
-Miner counts, share totals, hashrate,
-block history, and live chain/RPC fields remain unavailable because they are not persisted or exposed
-to the dashboard. To add a custom dashboard domain later, run
+`/api/status` endpoint requires a valid Stratum `mining.subscribe` response from the public endpoint
+and reads mining activity from the pool's authenticated private stats API. The pool persists share
+outcomes in `/data/pool-stats.sqlite` on its existing volume; only confirmed main-chain block hashes
+count as found blocks. The internal stats service listens on port `3334`; never assign it a public
+domain or TCP proxy. Set `POOL_STATS_DB=/data/pool-stats.sqlite`, `POOL_STATS_PORT=3334`, and the same
+high-entropy `POOL_STATS_TOKEN` on the pool and dashboard. On the dashboard set
+`POOL_STATS_URL=http://stratum-pool.railway.internal:3334/internal/stats`. Keep the token in Railway
+variables; do not paste it into logs, the repository, or the browser.
+
+Stats begin when the telemetry deployment is active; earlier shares are not backfilled. The pool
+has rate counters, active authenticated connections/workers, recent share outcomes, and confirmed
+blocks. Hashrate is estimated as accepted share difficulty times `2^32`, summed over the complete
+rolling 600-second window and divided by 600; it remains unavailable until the pool has run for
+that complete window. This is an estimate, not measured hardware performance. The dashboard's
+network hashrate and live chain/RPC fields remain unavailable. To add a custom dashboard domain later, run
 `railway domain pool.ronpaulcoin.org --service pool-dashboard --port 8080`, publish the DNS records
 Railway returns, and wait for Railway to report the domain and TLS certificate active. This does not
 change the separate Stratum TCP proxy or its port. Set the restart policy of the daemon and pool as
@@ -121,6 +132,16 @@ the volume and not onto the command line.
 | `DAEMON_RETRY_SECONDS` | optional, default 5 |
 | `MAX_CONNECTIONS_PER_IP` | `0` until real client addresses are confirmed |
 | `BLOCK_JOURNAL_PATH` | `/data/blocks.jsonl` |
+| `POOL_STATS_DB` | `/data/pool-stats.sqlite` (existing `/data` volume; telemetry begins at deployment) |
+| `POOL_STATS_PORT` | `3334` (private only; no public networking) |
+| `POOL_STATS_TOKEN` | generate a URL-safe token of at least 32 characters; configure the same value on the dashboard without printing it |
+
+`pool-dashboard` additionally requires:
+
+| Variable | Value |
+|---|---|
+| `POOL_STATS_URL` | `http://stratum-pool.railway.internal:3334/internal/stats` |
+| `POOL_STATS_TOKEN` | Railway reference to the `stratum-pool` service's shared stats token |
 
 ## Restart policy
 

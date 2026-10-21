@@ -56,13 +56,19 @@
 
             <div class="section-heading section-heading-spaced">
                 <div><span class="section-index">02</span><h2>Mining activity</h2></div>
-                <span class="section-note">Accounting is not enabled on this solo pool</span>
+                <span class="section-note" id="activity-note">Activity starts with the telemetry deployment</span>
             </div>
             <section class="metric-grid activity-grid" aria-label="Mining activity">
-                <article class="metric-card"><div class="metric-label">POOL HASHRATE</div><div class="metric-value unavailable">Not tracked</div><div class="metric-foot">No accepted-share history is persisted</div></article>
-                <article class="metric-card"><div class="metric-label">CONNECTED MINERS</div><div class="metric-value unavailable">Not tracked</div><div class="metric-foot">Live worker accounting is not implemented</div></article>
-                <article class="metric-card"><div class="metric-label">ACCEPTED / REJECTED</div><div class="metric-value unavailable">Not tracked</div><div class="metric-foot">Share counts are not persisted</div></article>
-                <article class="metric-card"><div class="metric-label">BLOCKS FOUND</div><div class="metric-value unavailable">Not tracked</div><div class="metric-foot">No pool block history is available</div></article>
+                <article class="metric-card"><div class="metric-label">POOL HASHRATE</div><div class="metric-value unavailable" id="pool-hashrate">Waiting for data</div><div class="metric-foot" id="hashrate-foot">Requires a complete 10-minute sample</div></article>
+                <article class="metric-card"><div class="metric-label">CONNECTED MINERS</div><div class="metric-value unavailable" id="connected-miners">Waiting for data</div><div class="metric-foot"><span id="connected-workers">—</span> authenticated workers connected</div></article>
+                <article class="metric-card"><div class="metric-label">ACCEPTED SHARES</div><div class="metric-value unavailable" id="accepted-shares">Waiting for data</div><div class="metric-foot" id="last-share">Last share: not recorded</div></article>
+                <article class="metric-card"><div class="metric-label">REJECTED / STALE</div><div class="metric-value unavailable" id="rejected-shares">Waiting for data</div><div class="metric-foot">Rejected: <span id="rejected-count">—</span> · stale jobs: <span id="stale-count">—</span></div></article>
+                <article class="metric-card"><div class="metric-label">CONFIRMED BLOCKS</div><div class="metric-value unavailable" id="blocks-found">Waiting for data</div><div class="metric-foot" id="block-foot">Only daemon-confirmed main-chain blocks</div></article>
+            </section>
+            <p class="activity-disclaimer" id="activity-disclaimer">No historical activity is available before tracking was enabled. A connected miner or delivered job is not an accepted share.</p>
+            <section class="recent-activity" aria-label="Recent share activity">
+                <div class="activity-feed-heading"><h3>Recent share activity</h3><span class="section-note">Recorded by the pool</span></div>
+                <ol id="recent-activity" class="activity-feed"><li class="activity-empty">Waiting for the private activity feed</li></ol>
             </section>
 
             <section class="connection-section">

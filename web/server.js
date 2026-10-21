@@ -20,7 +20,78 @@ function readConfig(env) {
     if (!address || !/^[A-Za-z0-9]+$/.test(address)) throw new Error('POOL_ADDRESS must be configured');
     const webPort = env.PORT === undefined ? 3000 : Number(env.PORT);
     if (!Number.isInteger(webPort) || webPort < 0 || webPort > 65535) throw new Error('PORT must be an integer from 0 to 65535');
-    return { host, port, address, webPort };
+    const statsUrl = env.POOL_STATS_URL || '';
+    const statsToken = env.POOL_STATS_TOKEN || '';
+    if (Boolean(statsUrl) !== Boolean(statsToken)) throw new Error('POOL_STATS_URL and POOL_STATS_TOKEN must be configured together');
+    let statsEndpoint = null;
+    if (statsUrl) {
+        let parsed;
+        try {
+            parsed = new URL(statsUrl);
+        } catch {
+            throw new Error('POOL_STATS_URL must be a private Railway HTTP endpoint');
+        }
+        if (parsed.protocol !== 'http:' || !parsed.hostname.endsWith('.railway.internal') || parsed.username || parsed.password
+            || parsed.search || parsed.hash || parsed.pathname !== '/internal/stats') {
+            throw new Error('POOL_STATS_URL must be a private Railway HTTP endpoint');
+        }
+        if (!/^[A-Za-z0-9_-]{32,256}$/.test(statsToken)) throw new Error('POOL_STATS_TOKEN must be 32-256 URL-safe characters');
+        statsEndpoint = { url: parsed.toString(), token: statsToken };
+    }
+    return { host, port, address, webPort, statsEndpoint };
+}
+
+async function fetchPoolStats(endpoint) {
+    if (!endpoint) throw new Error('Pool activity feed is not configured');
+    const response = await fetch(endpoint.url, {
+        headers: { Authorization: `Bearer ${endpoint.token}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(2500)
+    });
+    if (!response.ok) throw new Error(`Private stats endpoint returned ${response.status}`);
+    return response.json();
+}
+
+function normalizeMiningStats(stats) {
+    const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+    const finite = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+    const validTime = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
+    const recentActivity = Array.isArray(stats.recentActivity) ? stats.recentActivity.slice(0, 10).map((event) => ({
+        at: validTime(event.at),
+        status: ['accepted', 'rejected', 'stale'].includes(event.status) ? event.status : 'unavailable',
+        difficulty: finite(event.difficulty),
+        blockHeight: count(event.blockHeight)
+    })) : null;
+    const recentWorkerSessions = Array.isArray(stats.recentWorkerSessions) ? stats.recentWorkerSessions.slice(0, 10).map((session) => ({
+        connectedAt: validTime(session.connectedAt),
+        disconnectedAt: validTime(session.disconnectedAt)
+    })) : null;
+    const lastBlock = stats.lastBlock && typeof stats.lastBlock === 'object'
+        && /^[a-f0-9]{64}$/i.test(stats.lastBlock.hash || '') && count(stats.lastBlock.height) !== null
+        ? { hash: stats.lastBlock.hash.toLowerCase(), height: stats.lastBlock.height, at: validTime(stats.lastBlock.at) }
+        : null;
+    return {
+        trackingStatus: stats.storage === 'available' || stats.storage === 'degraded' ? stats.storage : 'unavailable',
+        trackingSince: validTime(stats.trackingSince),
+        poolHashrate: finite(stats.poolHashrate),
+        hashrateWindowSeconds: count(stats.hashrateWindowSeconds),
+        connectedMiners: count(stats.connectedMiners),
+        connectedWorkers: count(stats.connectedWorkers),
+        activeWorkers24h: count(stats.activeWorkers24h),
+        workerConnections: count(stats.workerConnections),
+        workerDisconnections: count(stats.workerDisconnections),
+        submittedShares: count(stats.submittedShares),
+        acceptedShares: count(stats.acceptedShares),
+        rejectedShares: count(stats.rejectedShares),
+        staleShares: count(stats.staleShares),
+        blocksFound: count(stats.blocksFound),
+        lastShareAt: validTime(stats.lastShareAt),
+        lastBlock,
+        recentActivity,
+        recentWorkerSessions,
+        unavailableReason: stats.storage === 'degraded'
+            ? 'Statistics storage reported an error; values may not include recent activity.'
+            : null
+    };
 }
 
 function probeStratum(host, port, timeoutMs = 2500) {
@@ -85,7 +156,7 @@ function createRateLimiter({ maxRequests = 60, windowMs = 60_000, now = Date.now
     };
 }
 
-function createDashboardServer({ env = process.env, probe = probeStratum, now = () => new Date() } = {}) {
+function createDashboardServer({ env = process.env, probe = probeStratum, statsFetch = fetchPoolStats, now = () => new Date() } = {}) {
     const config = readConfig(env);
     const allowApiRequest = createRateLimiter();
     const publicDir = path.join(__dirname, 'public');
@@ -126,6 +197,32 @@ function createDashboardServer({ env = process.env, probe = probeStratum, now = 
             } catch {
                 probeFailed = true;
             }
+            let mining;
+            try {
+                mining = normalizeMiningStats(await statsFetch(config.statsEndpoint));
+            } catch {
+                mining = {
+                    trackingStatus: 'unavailable',
+                    trackingSince: null,
+                    poolHashrate: null,
+                    hashrateWindowSeconds: null,
+                    connectedMiners: null,
+                    connectedWorkers: null,
+                    activeWorkers24h: null,
+                    workerConnections: null,
+                    workerDisconnections: null,
+                    submittedShares: null,
+                    acceptedShares: null,
+                    rejectedShares: null,
+                    staleShares: null,
+                    blocksFound: null,
+                    lastShareAt: null,
+                    lastBlock: null,
+                    recentActivity: null,
+                    recentWorkerSessions: null,
+                    unavailableReason: 'The private pool activity feed is unavailable; activity metrics cannot be updated.'
+                };
+            }
             const checkedAt = now().toISOString();
             sendJson(response, 200, {
                 generatedAt: checkedAt,
@@ -136,19 +233,7 @@ function createDashboardServer({ env = process.env, probe = probeStratum, now = 
                     check: 'mining.subscribe',
                     endpoint: { host: config.host, port: config.port, protocol: 'Stratum TCP' }
                 },
-                mining: {
-                    poolHashrate: null,
-                    networkHashrate: null,
-                    connectedMiners: null,
-                    connectedWorkers: null,
-                    acceptedShares: null,
-                    rejectedShares: null,
-                    staleShares: null,
-                    blocksFound: null,
-                    lastBlock: null,
-                    recentActivity: null,
-                    unavailableReason: 'The pool does not persist share, worker, hashrate, or block statistics.'
-                },
+                mining,
                 network: {
                     daemonRpc: 'unavailable',
                     synchronization: 'unverified',
@@ -204,4 +289,4 @@ if (require.main === module) {
     server.listen(port, '0.0.0.0', () => console.log(`Dashboard listening on port ${port}`));
 }
 
-module.exports = { createDashboardServer, createRateLimiter, probeStratum, readConfig };
+module.exports = { createDashboardServer, createRateLimiter, probeStratum, readConfig, normalizeMiningStats };

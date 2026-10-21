@@ -127,3 +127,23 @@ test('rejects invalid limit values', () => {
         assert.throws(() => loadPoolConfig({ ...validEnv(), [name]: value }), new RegExp(name), `${name}=${value}`);
     }
 });
+
+test('enables the private statistics API only with an absolute database path and strong token', () => {
+    assert.equal(loadPoolConfig(validEnv()).statistics, null);
+    const config = loadPoolConfig({
+        ...validEnv(),
+        POOL_STATS_DB: '/data/pool-stats.sqlite',
+        POOL_STATS_PORT: '3334',
+        POOL_STATS_TOKEN: 'a'.repeat(64)
+    });
+    assert.deepEqual(config.statistics, {
+        path: '/data/pool-stats.sqlite',
+        port: 3334,
+        token: 'a'.repeat(64)
+    });
+    assert.throws(() => loadPoolConfig({ ...validEnv(), POOL_STATS_DB: 'pool.sqlite' }), /POOL_STATS_DB/);
+    assert.throws(() => loadPoolConfig({ ...validEnv(), POOL_STATS_PORT: '3334' }), /POOL_STATS_DB/);
+    assert.throws(() => loadPoolConfig({
+        ...validEnv(), POOL_STATS_DB: '/data/pool-stats.sqlite', POOL_STATS_PORT: '3334', POOL_STATS_TOKEN: 'short'
+    }), /POOL_STATS_TOKEN/);
+});

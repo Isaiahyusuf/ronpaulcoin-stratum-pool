@@ -20,17 +20,19 @@ and no block or payout has been verified.
 
 The production web dashboard is available at
 [pool-dashboard-production-02b2.up.railway.app](https://pool-dashboard-production-02b2.up.railway.app/).
-It is a separate Railway service and checks the Stratum `mining.subscribe` response while displaying
-its configured endpoint. Daemon RPC, current chain details, templates, and mining
-statistics are explicitly unavailable until a trustworthy data source exists.
+It is a separate Railway service, checks the public Stratum `mining.subscribe` response, and reads
+pool activity from an authenticated private API. Mainnet daemon RPC, current chain details, templates,
+network hashrate, and canonical-chain verification remain unavailable.
 Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
 scrypt mainnet.
 
 **Solo-pool reward model:** the entire block reward goes to `POOL_ADDRESS`. There are no
-automatic miner payouts or share accounting. Authorization accepts only that configured
+automatic miner payouts or proportional share payouts. The pool persists validated share and
+worker activity for dashboard statistics; this accounting does not change consensus validation
+or payouts. Authorization accepts only that configured
 address (optionally followed by `.worker`); using a different miner login address is
 rejected. Only mine with a wallet you control and understand that finding a block is
-not guaranteed. Share accounting, statistics, and miner payouts are not implemented.
+not guaranteed. Statistics start when telemetry is deployed; prior activity is not backfilled.
 
 ## Layout
 
@@ -52,11 +54,15 @@ using Railway's `PORT`, and serves `/` plus `/api/status` and `/healthz`. Config
 `STRATUM_PUBLIC_HOST`, `STRATUM_PUBLIC_PORT`, and the public `POOL_ADDRESS` on that
 service. It requires no daemon RPC credentials and must not be granted daemon RPC access.
 
-The dashboard measures only whether the configured public Stratum endpoint returns a valid
-`mining.subscribe` response. Pool/network hashrate, workers, shares, blocks, daemon RPC, chain tip,
-peers, and template status are shown as unavailable—not as zero—because they are not
-exposed to this service or persisted by the pool. No share accounting or payouts are
-added by the dashboard.
+The dashboard measures whether the configured public Stratum endpoint returns a valid
+`mining.subscribe` response and fetches worker/share/block totals from the pool's private,
+bearer-authenticated stats endpoint. It has no daemon RPC credentials and cannot expose them.
+Pool hashrate is an estimate from accepted share difficulty over a complete rolling ten-minute
+window (`sum(difficulty × 2^32) / 600 seconds`); it remains unavailable until that observation
+window is complete. Connected miners are authenticated live connections, workers are distinct
+authenticated worker logins, and block counts include only block hashes the daemon confirms in
+its main chain. Historical counters begin at telemetry deployment and are not backfilled.
+Network hashrate, daemon RPC, chain tip, peers, and template status remain unavailable.
 
 If you control a custom domain, create it for the dashboard with
 `railway domain pool.ronpaulcoin.org --service pool-dashboard --port 8080`, then publish
@@ -81,6 +87,9 @@ npm install
 |---|---|---|---|
 | `POOL_NETWORK` | yes | | `mainnet`, `testnet` or `regtest` |
 | `POOL_ADDRESS` | yes | | Pool coinbase address (P2PKH, checked against the network) |
+| `POOL_STATS_DB` | no | (off) | Absolute SQLite path for persistent share accounting (production: `/data/pool-stats.sqlite`) |
+| `POOL_STATS_PORT` | with stats | | Private pool stats API port (production: `3334`; do not create a public domain or proxy) |
+| `POOL_STATS_TOKEN` | with stats | | Shared URL-safe bearer token (32-256 characters), same secret on the pool and dashboard |
 | `DAEMON_HOSTS` | yes | | Comma-separated `host:rpcport` list |
 | `DAEMON_RPC_USER` | yes | | Daemon RPC user |
 | `DAEMON_RPC_PASSWORD` | yes | | Daemon RPC password; never logged |

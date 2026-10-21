@@ -1,6 +1,7 @@
 const { encodeAddress } = require('../../lib/address');
 const { createRpcClient } = require('./rpc');
 const { createTestKey } = require('./transactions');
+const crypto = require('node:crypto');
 
 const REGTEST_P2PKH = 122;
 
@@ -31,7 +32,10 @@ function createRegtestEnvironment({ stratumPort, difficulty }) {
         DAEMON_RPC_PASSWORD: credentials.password,
         STRATUM_PORT: String(stratumPort),
         STRATUM_DIFFICULTY: String(difficulty),
-        BLOCK_REFRESH_MS: '500'
+        BLOCK_REFRESH_MS: '500',
+        POOL_STATS_DB: `/tmp/ronpaulcoin-pool-stats-${process.pid}-${stratumPort}.sqlite`,
+        POOL_STATS_PORT: String(stratumPort + 10000),
+        POOL_STATS_TOKEN: crypto.randomBytes(32).toString('hex')
     };
 
     const waitUntil = async (check, description, timeoutMs = 15000) => {

@@ -601,11 +601,15 @@ var pool = module.exports = function pool(options, authorizeFn){
             });
 
         }).on('client.connected', function(client){
+            _this.emit('client.connected', client);
             if (typeof(_this.varDiff[client.socket.localPort]) !== 'undefined') {
                 _this.varDiff[client.socket.localPort].manageClient(client);
             }
 
-            client.on('difficultyChanged', function(diff){
+            client.on('authorized', function(authorized, workerName) {
+                _this.emit('client.authorized', client, authorized, workerName);
+
+            }).on('difficultyChanged', function(diff){
                 _this.emit('difficultyUpdate', client.workerName, diff);
 
             }).on('subscription', function(params, resultCallback){
@@ -687,6 +691,10 @@ var pool = module.exports = function pool(options, authorizeFn){
                 emitWarningLog('Banned triggered for ' + client.getLabel() + ': ' + reason);
                 _this.emit('banIP', client.remoteAddress, client.workerName);
             });
+        });
+
+        _this.stratumServer.on('client.disconnected', function(client) {
+            _this.emit('client.disconnected', client);
         });
     }
 

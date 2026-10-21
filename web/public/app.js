@@ -13,6 +13,78 @@ function formatTime(value) {
     return `UPDATED ${new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 }
 
+function formatNumber(value) {
+    return value === null || value === undefined ? 'Unavailable' : new Intl.NumberFormat().format(value);
+}
+
+function formatHashrate(value) {
+    if (value === null || value === undefined) return 'Collecting data';
+    const units = ['H/s', 'kH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
+    let rate = value;
+    let unit = 0;
+    while (rate >= 1000 && unit < units.length - 1) {
+        rate /= 1000;
+        unit += 1;
+    }
+    return `${new Intl.NumberFormat([], { maximumFractionDigits: 2 }).format(rate)} ${units[unit]}`;
+}
+
+function renderMining(mining) {
+    const online = mining.trackingStatus === 'available' || mining.trackingStatus === 'degraded';
+    const hashrate = formatHashrate(mining.poolHashrate);
+    setText('pool-hashrate', hashrate);
+    setText('hashrate-foot', mining.poolHashrate === null
+        ? 'A full 10-minute observation window is required'
+        : `Estimated from accepted shares over ${Math.floor((mining.hashrateWindowSeconds || 600) / 60)} minutes`);
+    setText('connected-miners', formatNumber(mining.connectedMiners));
+    setText('connected-workers', `${formatNumber(mining.connectedWorkers)} · ${formatNumber(mining.workerConnections)} total connections / ${formatNumber(mining.workerDisconnections)} disconnects`);
+    setText('accepted-shares', formatNumber(mining.acceptedShares));
+    setText('last-share', mining.lastShareAt ? `Last share: ${new Date(mining.lastShareAt).toLocaleString()}` : 'Last share: none recorded');
+    setText('rejected-shares', formatNumber(mining.rejectedShares));
+    setText('rejected-count', formatNumber(mining.rejectedShares));
+    setText('stale-count', formatNumber(mining.staleShares));
+    setText('blocks-found', formatNumber(mining.blocksFound));
+    setText('block-foot', mining.lastBlock
+        ? `Last confirmed: height ${formatNumber(mining.lastBlock.height)} · ${mining.lastBlock.at ? new Date(mining.lastBlock.at).toLocaleString() : 'time unavailable'}`
+        : 'Only daemon-confirmed main-chain blocks');
+    setText('activity-note', online
+        ? mining.trackingStatus === 'degraded' ? 'Telemetry persistence degraded' : `Tracking since ${mining.trackingSince ? new Date(mining.trackingSince).toLocaleString() : 'startup'}`
+        : 'Activity feed unavailable');
+    setText('activity-disclaimer', mining.unavailableReason
+        || 'Historical totals begin when this telemetry deployment started; no earlier activity is inferred. A connected miner or delivered job is not an accepted share.');
+    const activity = document.getElementById('recent-activity');
+    activity.replaceChildren();
+    if (!online) {
+        const item = document.createElement('li');
+        item.className = 'activity-empty';
+        item.textContent = 'Share activity is currently unavailable.';
+        activity.append(item);
+    } else if (!mining.recentActivity || mining.recentActivity.length === 0) {
+        const item = document.createElement('li');
+        item.className = 'activity-empty';
+        item.textContent = 'No share submissions recorded since tracking began.';
+        activity.append(item);
+    } else {
+        for (const event of mining.recentActivity) {
+            const item = document.createElement('li');
+            item.className = `activity-event ${event.status}`;
+            const outcome = document.createElement('span');
+            outcome.className = 'activity-outcome';
+            outcome.textContent = event.status === 'accepted' ? 'ACCEPTED'
+                : event.status === 'stale' ? 'STALE JOB'
+                    : event.status === 'rejected' ? 'REJECTED' : 'OUTCOME UNAVAILABLE';
+            const detail = document.createElement('span');
+            detail.className = 'activity-detail';
+            detail.textContent = event.difficulty === null ? 'Difficulty unavailable' : `Share difficulty ${event.difficulty}`;
+            const time = document.createElement('time');
+            time.className = 'activity-time';
+            time.textContent = event.at ? new Date(event.at).toLocaleString() : 'Time unavailable';
+            item.append(outcome, detail, time);
+            activity.append(item);
+        }
+    }
+}
+
 function render(data) {
     values.host = data.connection.host;
     values.port = String(data.connection.port);
@@ -31,6 +103,7 @@ function render(data) {
     setText('last-check', formatTime(data.pool.checkedAt));
     setText('pool-status', data.pool.status === 'reachable' ? 'STRATUM READY' : data.pool.status === 'offline' ? 'OFFLINE' : 'CHECK FAILED');
     setText('rpc-status', data.network.daemonRpc === 'unavailable' ? 'Private / unavailable' : data.network.daemonRpc);
+    renderMining(data.mining);
 
     const dot = document.getElementById('status-dot');
     dot.classList.toggle('online', data.pool.status === 'reachable');

@@ -176,6 +176,7 @@ var StratumClient = function(options){
         _this.workerPass = message.params[1];
         options.authorizeFn(_this.remoteAddress, options.socket.localPort, _this.workerName, _this.workerPass, function(result) {
             _this.authorized = (!result.error && result.authorized);
+            _this.emit('authorized', _this.authorized, _this.authorized ? _this.workerName : null);
             
             if (replyToSocket) {
                 sendJson({
