@@ -1,20 +1,22 @@
 # Railway deployment runbook
 
-Status: **both Railway production services are running, but mainnet mining is blocked by the daemon's lack of peers.**
-The daemon reports mainnet mode, block height 0 and zero peers; `getblocktemplate` returns
-`RonPaulCoin is not connected!`. Attempts to connect the pinned mainnet seed addresses did not establish a
-peer. The deployed pool has healthy private RPC connectivity but waits for a usable template and does not
-open its Stratum listener. There is no pool TCP proxy or public Stratum endpoint. Pool and daemon behavior
-has been tested together on local regtest only (see "What was verified"). Payouts are disabled and not
-implemented. Do not expose daemon RPC or P2P ports publicly. The daemon's RPC allow-list is currently set
-to the exact private IPv6 address resolved for the pool; re-check it if the pool's private endpoint changes.
+Status: **both Railway production services are online; public Stratum is closed pending independent
+verification of the original mainnet's current canonical chain.** The daemon is configured for mainnet,
+has two connections to the explicit peers, reports height 2,221,495, and returns a template for height
+2,221,496. Its tip hash is `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`,
+dated 2026-08-26. Both peers report the same height, but neither supplied headers after that tip. The
+MiningPoolStats entry reports zero miners/hashrate and a lower pool-reported height; its last reported
+block is from 2025-11-24, so it is not an independent current chain source. No accepted mainnet share or
+mined block has been verified. Payouts are disabled and not implemented. Do not expose daemon RPC or P2P
+ports publicly. The daemon's RPC allow-list is restricted to the exact current private IPv6 address
+resolved for the pool; re-check it if the pool's private endpoint changes.
 
 ## Services
 
 | Service | Source | Volume | Public networking |
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
-| `stratum-pool` | this repo, branch `main`, root `Dockerfile`; deployed and waiting for a usable template | `/data` (block journal) | **none**; add a TCP proxy to port 3333 only after the daemon is mining-ready |
+| `stratum-pool` | this repo, branch `main`, root `Dockerfile`; deployed with a usable template | `/data` (block journal) | **none currently**; keep closed until the original mainnet tip is independently verified |
 
 Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen

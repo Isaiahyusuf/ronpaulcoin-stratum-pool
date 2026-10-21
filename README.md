@@ -5,12 +5,22 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 ## Status
 
-The Railway production pool is exposed over Stratum TCP at
-`altaria.proxy.rlwy.net:43142` (application port 3333). At last verification, the daemon
-had two connected peers, was at height 2,221,495, and returned a template for height
-2,221,496. The reported tip is dated 2026-08-26; recent mainnet block production has not
-been independently confirmed. A public subscribe/authorize/job-delivery check passed,
-but no real miner share has been submitted and no block has been mined.
+The Railway production pool is deployed and can obtain a mainnet block template, but its
+public Stratum TCP proxy is currently **closed** because current canonical mainnet
+activity cannot be independently verified. At last verification on 2026-10-21, the
+daemon had two peers, both advertising height 2,221,495, and returned a template for
+height 2,221,496. Its tip hash is
+`f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated
+2026-08-26. MiningPoolStats reports zero miners and hashrate and a pool-reported height
+of 2,219,902, but its only listed pool's last reported block is from 2025-11-24, so it
+does not independently establish the current canonical tip. The two peers' matching
+responses are not independent corroboration. No real mainnet share has been submitted
+and no block has been mined.
+
+To reopen Stratum, obtain a current best hash, height, timestamp, and cumulative
+chainwork from a trusted, independently operated original-mainnet node and verify that
+it matches this daemon's chain. Do not confuse the newer tokenized asset using the
+RonPaulCoin name with the original scrypt mainnet.
 
 **Solo-pool reward model:** the entire block reward goes to `POOL_ADDRESS`. There are no
 automatic miner payouts or share accounting. Authorization accepts only that configured
