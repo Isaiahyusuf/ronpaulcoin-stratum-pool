@@ -1,22 +1,22 @@
 # Railway deployment runbook
 
-Status: **both Railway production services are online; public Stratum is closed pending independent
-verification of the original mainnet's current canonical chain.** The daemon is configured for mainnet,
-has two connections to the explicit peers, reports height 2,221,495, and returns a template for height
-2,221,496. Its tip hash is `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`,
-dated 2026-08-26. Both peers report the same height, but neither supplied headers after that tip. The
-MiningPoolStats entry reports zero miners/hashrate and a lower pool-reported height; its last reported
-block is from 2025-11-24, so it is not an independent current chain source. No accepted mainnet share or
-mined block has been verified. Payouts are disabled and not implemented. Do not expose daemon RPC or P2P
-ports publicly. The daemon's RPC allow-list is restricted to the exact current private IPv6 address
-resolved for the pool; re-check it if the pool's private endpoint changes.
+Status: the daemon and Stratum services are online; a public Stratum proxy is configured, and the
+separate `pool-dashboard` web service is being deployed. Stratum subscribe, configured-address
+authorization, and job delivery were externally smoke-tested, but canonical mainnet activity is not
+independently verified and no accepted mainnet share, mined block, or payout has been verified.
+The daemon last reported height 2,221,495, tip
+`f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated 2026-08-26; the peers
+advertised the same height. Do not expose daemon RPC or P2P ports publicly. The daemon's RPC
+allow-list is restricted to the pool's private hostname-resolved addresses; the dashboard must not
+be added to that allow-list.
 
 ## Services
 
 | Service | Source | Volume | Public networking |
 |---|---|---|---|
 | `ronpaulcoind` | deployed daemon, Dockerfile `docker/daemon/Dockerfile` | `/data` | **none** (no domain, no TCP proxy) |
-| `stratum-pool` | this repo, branch `main`, root `Dockerfile`; deployed with a usable template | `/data` (block journal) | **none currently**; keep closed until the original mainnet tip is independently verified |
+| `stratum-pool` | this repo, branch `main`, root `Dockerfile` | `/data` (block journal) | TCP proxy `roundhouse.proxy.rlwy.net:53914` -> `3333` |
+| `pool-dashboard` | this repo, root directory `web`, `Dockerfile` | none | Railway HTTP domain; see Railway service |
 
 Railway's TCP proxy ([docs](https://docs.railway.com/networking/tcp-proxy)) gives the pool a public
 `<name>.proxy.rlwy.net:<port>` that forwards raw TCP, so Stratum works there. The port number is chosen
@@ -25,8 +25,10 @@ CNAMEd to the proxy host (DNS only, no Cloudflare proxying) but the port stays R
 domains cannot carry Stratum. The daemon is reached only over private networking
 (`ronpaulcoind.railway.internal:9026`). Never generate a public domain or TCP proxy for it.
 
-Railway Docker health checks are HTTP-only and the pool has no HTTP server (by design, no dashboard), so
-configure none. Set the restart policy of both services as described in "Restart policy" below.
+The dashboard exposes `/healthz` for its HTTP health check and does not connect to daemon RPC. Its
+`/api/status` endpoint tests only public Stratum TCP reachability. Miner counts, share totals, hashrate,
+block history, and live chain/RPC fields remain unavailable because they are not persisted or exposed
+to the dashboard. Set the restart policy of the daemon and pool as described in "Restart policy" below.
 
 ## Settings that need your decision before deploying
 

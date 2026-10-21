@@ -5,28 +5,30 @@ vendored [node-stratum-pool](https://github.com/zone117x/node-stratum-pool) used
 
 ## Status
 
-The Railway production pool is deployed and can obtain a mainnet block template, but its
-public Stratum TCP proxy is currently **closed** because current canonical mainnet
-activity cannot be independently verified. At last verification on 2026-10-21, the
-daemon had two peers, both advertising height 2,221,495, and returned a template for
-height 2,221,496. Its tip hash is
+The Railway production Stratum service has a public TCP proxy and has passed external
+subscribe, configured-address authorization, and job-delivery checks. This confirms the
+Stratum endpoint is reachable; it does **not** independently verify current canonical
+mainnet activity or prove that a share was accepted. At last daemon verification on
+2026-10-21, it had two peers advertising height 2,221,495. Its tip hash is
 `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated
-2026-08-26. MiningPoolStats reports zero miners and hashrate and a pool-reported height
+2026-08-26. A pool startup attempt reported that the daemon was downloading blocks;
+MiningPoolStats reports zero miners and hashrate and a pool-reported height
 of 2,219,902, but its only listed pool's last reported block is from 2025-11-24, so it
 does not independently establish the current canonical tip. The two peers' matching
 responses are not independent corroboration. No real mainnet share has been submitted
-and no block has been mined.
+and no block or payout has been verified.
 
-To reopen Stratum, obtain a current best hash, height, timestamp, and cumulative
-chainwork from a trusted, independently operated original-mainnet node and verify that
-it matches this daemon's chain. Do not confuse the newer tokenized asset using the
-RonPaulCoin name with the original scrypt mainnet.
+The production web dashboard is a separate service. It checks Stratum TCP reachability
+and displays its configured endpoint. Daemon RPC, current chain details, templates, and
+mining statistics are explicitly unavailable until a trustworthy data source exists.
+Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
+scrypt mainnet.
 
 **Solo-pool reward model:** the entire block reward goes to `POOL_ADDRESS`. There are no
 automatic miner payouts or share accounting. Authorization accepts only that configured
 address (optionally followed by `.worker`); using a different miner login address is
 rejected. Only mine with a wallet you control and understand that finding a block is
-not guaranteed. Redis share accounting, statistics and a dashboard are not implemented.
+not guaranteed. Share accounting, statistics, and miner payouts are not implemented.
 
 ## Layout
 
@@ -34,11 +36,25 @@ not guaranteed. Redis share accounting, statistics and a dashboard are not imple
 |---|---|
 | `bin/pool.js` | Entry point; reads configuration from the environment |
 | `lib/` | Config validation, login/address checks, scrypt hasher, pool wrapper |
+| `web/` | Independent HTTP dashboard and its read-only Stratum TCP health check |
 | `coins/ronpaulcoin.json` | Coin parameters (address versions, algorithm, `hasGetInfo`) |
 | `vendor/stratum-pool/` | Upstream Stratum engine; patches listed in `VENDORED.md` |
 | `docker/daemon/Dockerfile` | Pinned daemon build (`builder`) and minimal `runtime` image |
 | `tools/regtest.sh` | Two-node regtest harness and integration test runner |
 | `test/` | Unit tests (`*.test.js`) and integration tests (`integration/*.regtest.js`) |
+
+## Dashboard
+
+The Railway `pool-dashboard` service builds from `web/Dockerfile`, binds to `0.0.0.0`
+using Railway's `PORT`, and serves `/` plus `/api/status` and `/healthz`. Configure
+`STRATUM_PUBLIC_HOST`, `STRATUM_PUBLIC_PORT`, and the public `POOL_ADDRESS` on that
+service. It requires no daemon RPC credentials and must not be granted daemon RPC access.
+
+The dashboard measures only whether a TCP connection to the configured public Stratum
+endpoint succeeds. Pool/network hashrate, workers, shares, blocks, daemon RPC, chain tip,
+peers, and template status are shown as unavailable—not as zero—because they are not
+exposed to this service or persisted by the pool. No share accounting or payouts are
+added by the dashboard.
 
 ## Requirements
 
