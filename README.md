@@ -23,6 +23,9 @@ The production web dashboard is available at
 It is a separate Railway service, checks the public Stratum `mining.subscribe` response, and reads
 pool activity from an authenticated private API. Mainnet daemon RPC, current chain details, templates,
 network hashrate, and canonical-chain verification remain unavailable.
+Telemetry code is pushed to `main`, but Railway currently rejects production deployments with
+“Deploys have been paused temporarily.” Until Railway resumes deployments, the live services still
+run their prior build and the dashboard continues to show activity as untracked.
 Do not confuse the newer tokenized asset using the RonPaulCoin name with the original
 scrypt mainnet.
 

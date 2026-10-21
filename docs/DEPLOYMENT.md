@@ -4,6 +4,9 @@ Status: the daemon, Stratum, and separate `pool-dashboard` web services are onli
 proxy is configured. Stratum subscribe, configured-address
 authorization, and job delivery were externally smoke-tested, but canonical mainnet activity is not
 independently verified and no accepted mainnet share, mined block, or payout has been verified.
+The telemetry implementation is pushed to `main`; Railway production deploy requests currently fail
+with “Deploys have been paused temporarily,” so the live pool and dashboard remain on their prior
+successful deployment until Railway resumes deployments.
 The daemon last reported height 2,221,495, tip
 `f0be8a117278b7f442ce35f4cc2c0e8a317f6dda535f9291d7162437294af1eb`, dated 2026-08-26; the peers
 advertised the same height. Do not expose daemon RPC or P2P ports publicly. The daemon's RPC
